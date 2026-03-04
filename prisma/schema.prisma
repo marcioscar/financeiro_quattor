@@ -1,0 +1,72 @@
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "mongodb"
+    url      = env("DATABASE_URL")
+}
+
+model receitas {
+    id        String   @id @default(auto()) @map("_id") @db.ObjectId
+    forma     String?
+    descricao String?
+    valor     Float?
+    data      DateTime?
+    status    String?
+}
+
+model despesas {
+    id          String    @id @default(auto()) @map("_id") @db.ObjectId
+    conta       String?
+    descricao   String?
+    valor       Float?
+    data        DateTime?
+    pago        Boolean?
+    tipo        String?
+    boleto_path String?
+    recibo_path String?
+
+    @@map("despesas")
+}
+
+type FolhaSalarios {
+    data   DateTime? @db.Date
+    decimo Float?
+    ferias Float?
+    fgts   Float?
+    pago   Boolean?
+    sal_id String?
+    valor  Float?
+}
+
+model folha {
+    id         String          @id @default(auto()) @map("_id") @db.ObjectId
+    conta      String
+    funcao     String
+    modalidade String
+    nome       String
+    salarios   FolhaSalarios[]
+}
+
+model contas {
+    id       String  @id @default(auto()) @map("_id") @db.ObjectId
+    etiqueta String
+    conta    String
+    tipo     String?
+}
+
+model cancelamentos {
+    id                String    @id @default(auto()) @map("_id") @db.ObjectId
+    aluno             String?
+    contato           String?
+    plano             String?
+    motivo            String?
+    data_solicitacao  DateTime?
+    conclusao         String?
+    valor_estornar    String?
+    stone             String?
+    data_limite       DateTime?
+    cancelado         Boolean?  @default(false)
+    recibo            String?
+}
