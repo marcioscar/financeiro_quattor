@@ -6,6 +6,7 @@ export default [
         route("receitas", "routes/receitas.tsx"),
         route("folha", "routes/folha.tsx"),
         route("treinos", "routes/treinos.tsx"),
+        route("treinos/pdf", "routes/treinos.pdf.tsx"),
         route("cancelamentos", "routes/cancelamentos.tsx"),
         route("contas", "routes/contas.tsx"),
        

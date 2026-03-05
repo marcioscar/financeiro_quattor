@@ -8,7 +8,7 @@ datasource db {
 }
 
 model receitas {
-    id        String   @id @default(auto()) @map("_id") @db.ObjectId
+    id        String    @id @default(auto()) @map("_id") @db.ObjectId
     forma     String?
     descricao String?
     valor     Float?
@@ -57,16 +57,48 @@ model contas {
 }
 
 model cancelamentos {
-    id                String    @id @default(auto()) @map("_id") @db.ObjectId
-    aluno             String?
-    contato           String?
-    plano             String?
-    motivo            String?
-    data_solicitacao  DateTime?
-    conclusao         String?
-    valor_estornar    String?
-    stone             String?
-    data_limite       DateTime?
-    cancelado         Boolean?  @default(false)
-    recibo            String?
+    id               String    @id @default(auto()) @map("_id") @db.ObjectId
+    aluno            String?
+    contato          String?
+    plano            String?
+    motivo           String?
+    data_solicitacao DateTime?
+    conclusao        String?
+    valor_estornar   String?
+    stone            String?
+    data_limite      DateTime?
+    cancelado        Boolean?  @default(false)
+    recibo           String?
+}
+
+type Exercicio {
+    nome       String?
+    Repeticoes String?
+    obs        String?
+    video      String?
+    carga      String?
+}
+
+type ExercicioBancoTreino {
+    exercicio   String?
+    observacao  String?
+    video       String?
+    repeticoes  String?
+}
+
+model treinos {
+    id         String      @id @default(auto()) @map("_id") @db.ObjectId
+    grupo      String
+    semana     Int
+    exercicios Exercicio[]
+}
+
+model banco_treino {
+    id         String               @id @default(auto()) @map("_id") @db.ObjectId
+    ciclo      String?
+    treino     String?
+    grupo      String?
+    exercicios ExercicioBancoTreino[]
+
+    @@map("banco_treinos")
 }

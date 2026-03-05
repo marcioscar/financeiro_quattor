@@ -56,6 +56,7 @@ export async function getDespesas() {
 
 	return db.despesas.findMany({
 		where: {
+			pago: true,
 			data: {
 				gte: inicioAno,
 				lte: fimAno,

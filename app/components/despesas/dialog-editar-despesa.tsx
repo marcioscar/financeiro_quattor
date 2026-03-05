@@ -1,5 +1,6 @@
 import { Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Checkbox } from "~/components/ui/checkbox";
 import { useFetcher } from "react-router";
 import { Button } from "~/components/ui/button";
 import {
@@ -61,6 +62,7 @@ export function DialogEditarDespesa({
 	);
 	const [data, setData] = useState(formatarDataParaInput(despesa.data));
 	const [tipo, setTipo] = useState(despesa.tipo ?? "");
+	const [pago, setPago] = useState(despesa.pago ?? false);
 	const fetcher = useFetcher<{ error?: string; success?: boolean }>();
 	const submittedRef = useRef(false);
 	const fileInputRef = useRef<HTMLInputElement>(null);
@@ -71,6 +73,7 @@ export function DialogEditarDespesa({
 		setValor(despesa.valor != null ? String(despesa.valor) : "");
 		setData(formatarDataParaInput(despesa.data));
 		setTipo(despesa.tipo ?? "");
+		setPago(despesa.pago ?? false);
 		fileInputRef.current && (fileInputRef.current.value = "");
 	}, [despesa]);
 
@@ -98,6 +101,9 @@ export function DialogEditarDespesa({
 		formData.append("valor", String(valorNum));
 		formData.append("data", data);
 		formData.append("tipo", tipo.trim());
+		if (variant === "contas_a_pagar") {
+			formData.append("pago", String(pago));
+		}
 
 		const fieldName =
 			variant === "contas_a_pagar" ? "boleto" : "comprovante";
@@ -237,6 +243,24 @@ export function DialogEditarDespesa({
 							</SelectContent>
 						</Select>
 					</Field>
+					{variant === "contas_a_pagar" && (
+						<Field>
+							<div className="flex items-center gap-2">
+								<Checkbox
+									id="editar-pago"
+									checked={pago}
+									onCheckedChange={(v) => setPago(!!v)}
+									disabled={busy}
+								/>
+								<FieldLabel
+									htmlFor="editar-pago"
+									className="cursor-pointer font-normal"
+								>
+									Marcar como pago
+								</FieldLabel>
+							</div>
+						</Field>
+					)}
 					<Field>
 						<FieldLabel htmlFor="editar-comprovante">
 							{variant === "contas_a_pagar"

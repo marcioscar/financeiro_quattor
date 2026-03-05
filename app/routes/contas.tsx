@@ -45,6 +45,7 @@ export async function action({ request }: Route.ActionArgs) {
 		const valorStr = formData.get("valor");
 		const dataStr = formData.get("data");
 		const tipo = formData.get("tipo");
+		const pagoStr = formData.get("pago");
 
 		if (
 			typeof id !== "string" ||
@@ -90,6 +91,8 @@ export async function action({ request }: Route.ActionArgs) {
 			}
 		}
 
+		const pago = pagoStr === "true";
+
 		try {
 			await updateDespesa(id, {
 				conta: conta.trim(),
@@ -97,6 +100,7 @@ export async function action({ request }: Route.ActionArgs) {
 				valor,
 				data,
 				tipo: tipo.trim(),
+				pago,
 				...(boletoPath !== undefined && { boleto_path: boletoPath }),
 			});
 			return { success: true };
