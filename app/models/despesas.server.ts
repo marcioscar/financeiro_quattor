@@ -66,6 +66,26 @@ export async function getDespesas() {
 	});
 }
 
+/** Soma das despesas fixas do mês atual (para cálculo de ponto de equilíbrio) */
+export async function getDespesasFixasDoMes(
+	dataRef: Date = new Date(),
+): Promise<number> {
+	const ano = dataRef.getFullYear();
+	const mes = dataRef.getMonth();
+	const inicioMes = new Date(ano, mes, 1);
+	const fimMes = new Date(ano, mes + 1, 0, 23, 59, 59, 999);
+
+	const despesas = await db.despesas.findMany({
+		where: {
+			tipo: "fixa",
+			data: { gte: inicioMes, lte: fimMes },
+		},
+		select: { valor: true },
+	});
+
+	return despesas.reduce((acc, d) => acc + (d.valor ?? 0), 0);
+}
+
 export async function getContasAPagar() {
 	const anoAtual = new Date().getFullYear();
 	const inicioAno = new Date(anoAtual, 0, 1);

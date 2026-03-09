@@ -277,3 +277,103 @@ export async function getAlunosAtivos(
 		return { alunos: [], erro: `Erro ao buscar alunos na EVO: ${msg}` };
 	}
 }
+
+function isFlCanceladoTrue(val: unknown): boolean {
+	if (val === true) return true;
+	if (val === 1) return true;
+	const s = String(val ?? "").trim().toLowerCase();
+	return ["true", "1", "sim", "yes"].includes(s);
+}
+
+/** Extrai linhas de planilha Excel/CSV e conta onde FlCancelado é true */
+function contarCanceladosDeBuffer(
+	buffer: ArrayBuffer,
+	isExcelFile: boolean,
+): number {
+	if (isExcelFile) {
+		const workbook = XLSX.read(buffer, { type: "array" });
+		const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+		if (!firstSheet) return 0;
+
+		const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(
+			firstSheet,
+			{ raw: false, defval: "" },
+		);
+
+		return rows.filter((row) => {
+			const val = row["FlCancelado"] ?? row["flCancelado"];
+			return isFlCanceladoTrue(val);
+		}).length;
+	}
+
+	const text = new TextDecoder("utf-8", { fatal: false }).decode(buffer);
+	const lines = text.trim().split(/\r?\n/);
+	if (lines.length < 2) return 0;
+
+	const sep = lines[0].includes(";") ? ";" : ",";
+	const headers = lines[0].split(sep).map((h) => h.trim());
+	const idxFlCancelado = headers.findIndex(
+		(h) => h.toLowerCase().replace(/\s+/g, "") === "flcancelado",
+	);
+	if (idxFlCancelado < 0) return 0;
+
+	let count = 0;
+	for (let i = 1; i < lines.length; i++) {
+		const cols = parseCsvLine(lines[i], sep);
+		const val = cols[idxFlCancelado];
+		if (isFlCanceladoTrue(val)) count++;
+	}
+	return count;
+}
+
+/**
+ * Busca clientes não renovados (not-renewed) no mês e retorna
+ * a quantidade de cancelamentos (FlCancelado = true).
+ */
+export async function getCancelamentosNoMes(
+	dataRef: Date = new Date(),
+): Promise<{ total: number; erro?: string }> {
+	if (!EVO_USER || !EVO_SECRET) {
+		return {
+			total: 0,
+			erro: "Credenciais EVO não configuradas. Defina EVO_USER e EVO_SECRET no .env",
+		};
+	}
+
+	const ano = dataRef.getFullYear();
+	const mes = dataRef.getMonth();
+	const primeiroDia = `${ano}-${String(mes + 1).padStart(2, "0")}-01`;
+	const ultimoDia = new Date(ano, mes + 1, 0).getDate();
+	const dataFim = `${ano}-${String(mes + 1).padStart(2, "0")}-${String(ultimoDia).padStart(2, "0")}`;
+
+	const url = `${EVO_API_BASE}/api/v2/management/not-renewed?dtStart=${primeiroDia}&dtEnd=${dataFim}`;
+
+	try {
+		const res = await fetch(url, {
+			headers: {
+				Authorization: getAuthHeader(),
+				Accept: "text/csv, application/vnd.ms-excel, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, */*",
+			},
+		});
+
+		const buffer = await res.arrayBuffer();
+
+		if (!res.ok) {
+			const text = new TextDecoder("utf-8", { fatal: false }).decode(buffer);
+			return {
+				total: 0,
+				erro: `EVO API retornou ${res.status}: ${text.slice(0, 200)}`,
+			};
+		}
+
+		if (res.status === 204 || buffer.byteLength === 0) {
+			return { total: 0 };
+		}
+
+		const total = contarCanceladosDeBuffer(buffer, isExcel(buffer));
+		return { total };
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : "Erro desconhecido";
+		return { total: 0, erro: `Erro ao buscar cancelamentos na EVO: ${msg}` };
+	}
+}
