@@ -75,18 +75,35 @@ export async function action({ request }: Route.ActionArgs) {
 		}
 
 		let boletoPath: string | undefined;
-		const file = formData.get("boleto");
-		if (file instanceof File && file.size > 0) {
+		const boletoFile = formData.get("boleto");
+		if (boletoFile instanceof File && boletoFile.size > 0) {
 			try {
-				const buffer = Buffer.from(await file.arrayBuffer());
+				const buffer = Buffer.from(await boletoFile.arrayBuffer());
 				const dataPrefix = dataStr.slice(0, 10);
-				const nomeComData = `${dataPrefix}-${file.name}`;
+				const nomeComData = `${dataPrefix}-boleto-${boletoFile.name}`;
 				boletoPath = await uploadReciboAndGetUrl(buffer, nomeComData);
 			} catch (err) {
 				const msg =
 					err instanceof Error
 						? err.message
 						: "Falha ao fazer upload do boleto";
+				return { error: msg };
+			}
+		}
+
+		let reciboPath: string | undefined;
+		const comprovanteFile = formData.get("comprovante");
+		if (comprovanteFile instanceof File && comprovanteFile.size > 0) {
+			try {
+				const buffer = Buffer.from(await comprovanteFile.arrayBuffer());
+				const dataPrefix = dataStr.slice(0, 10);
+				const nomeComData = `${dataPrefix}-comprovante-${comprovanteFile.name}`;
+				reciboPath = await uploadReciboAndGetUrl(buffer, nomeComData);
+			} catch (err) {
+				const msg =
+					err instanceof Error
+						? err.message
+						: "Falha ao fazer upload do comprovante";
 				return { error: msg };
 			}
 		}
@@ -102,6 +119,7 @@ export async function action({ request }: Route.ActionArgs) {
 				tipo: tipo.trim(),
 				pago,
 				...(boletoPath !== undefined && { boleto_path: boletoPath }),
+				...(reciboPath !== undefined && { recibo_path: reciboPath }),
 			});
 			return { success: true };
 		} catch {

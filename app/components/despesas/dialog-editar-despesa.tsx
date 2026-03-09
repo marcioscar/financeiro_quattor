@@ -65,7 +65,8 @@ export function DialogEditarDespesa({
 	const [pago, setPago] = useState(despesa.pago ?? false);
 	const fetcher = useFetcher<{ error?: string; success?: boolean }>();
 	const submittedRef = useRef(false);
-	const fileInputRef = useRef<HTMLInputElement>(null);
+	const boletoInputRef = useRef<HTMLInputElement>(null);
+	const comprovanteInputRef = useRef<HTMLInputElement>(null);
 
 	const resetForm = useCallback(() => {
 		setConta(despesa.conta ?? "");
@@ -74,7 +75,8 @@ export function DialogEditarDespesa({
 		setData(formatarDataParaInput(despesa.data));
 		setTipo(despesa.tipo ?? "");
 		setPago(despesa.pago ?? false);
-		fileInputRef.current && (fileInputRef.current.value = "");
+		boletoInputRef.current && (boletoInputRef.current.value = "");
+		comprovanteInputRef.current && (comprovanteInputRef.current.value = "");
 	}, [despesa]);
 
 	useEffect(() => {
@@ -103,15 +105,27 @@ export function DialogEditarDespesa({
 		formData.append("tipo", tipo.trim());
 		if (variant === "contas_a_pagar") {
 			formData.append("pago", String(pago));
-		}
 
-		const fieldName =
-			variant === "contas_a_pagar" ? "boleto" : "comprovante";
-		const fileInput = form.querySelector<HTMLInputElement>(
-			`input[name="${fieldName}"]`,
-		);
-		if (fileInput?.files?.[0]) {
-			formData.append(fieldName, fileInput.files[0]);
+			const boletoInput = form.querySelector<HTMLInputElement>(
+				'input[name="boleto"]',
+			);
+			if (boletoInput?.files?.[0]) {
+				formData.append("boleto", boletoInput.files[0]);
+			}
+
+			const comprovanteInput = form.querySelector<HTMLInputElement>(
+				'input[name="comprovante"]',
+			);
+			if (comprovanteInput?.files?.[0]) {
+				formData.append("comprovante", comprovanteInput.files[0]);
+			}
+		} else {
+			const comprovanteInput = form.querySelector<HTMLInputElement>(
+				'input[name="comprovante"]',
+			);
+			if (comprovanteInput?.files?.[0]) {
+				formData.append("comprovante", comprovanteInput.files[0]);
+			}
 		}
 
 		fetcher.submit(formData, {
@@ -261,25 +275,61 @@ export function DialogEditarDespesa({
 							</div>
 						</Field>
 					)}
-					<Field>
-						<FieldLabel htmlFor="editar-comprovante">
-							{variant === "contas_a_pagar"
-								? "Boleto"
-								: "Comprovante de pagamento"}
-						</FieldLabel>
-						<Input
-							ref={fileInputRef}
-							id="editar-comprovante"
-							name={variant === "contas_a_pagar" ? "boleto" : "comprovante"}
-							type="file"
-							accept=".pdf,.jpg,.jpeg,.png,.webp"
-							disabled={busy}
-							className="cursor-pointer"
-						/>
-						<p className="mt-1 text-xs text-muted-foreground">
-							Deixe em branco para manter o atual
-						</p>
-					</Field>
+					{variant === "contas_a_pagar" ? (
+						<>
+							<Field>
+								<FieldLabel htmlFor="editar-boleto">Boleto</FieldLabel>
+								<Input
+									ref={boletoInputRef}
+									id="editar-boleto"
+									name="boleto"
+									type="file"
+									accept=".pdf,.jpg,.jpeg,.png,.webp"
+									disabled={busy}
+									className="cursor-pointer"
+								/>
+								<p className="mt-1 text-xs text-muted-foreground">
+									Deixe em branco para manter o atual
+								</p>
+							</Field>
+							<Field>
+								<FieldLabel htmlFor="editar-comprovante">
+									Comprovante de pagamento
+								</FieldLabel>
+								<Input
+									ref={comprovanteInputRef}
+									id="editar-comprovante"
+									name="comprovante"
+									type="file"
+									accept=".pdf,.jpg,.jpeg,.png,.webp"
+									disabled={busy}
+									className="cursor-pointer"
+								/>
+								<p className="mt-1 text-xs text-muted-foreground">
+									Envie o comprovante ao marcar como pago. Deixe em branco para
+									manter o atual.
+								</p>
+							</Field>
+						</>
+					) : (
+						<Field>
+							<FieldLabel htmlFor="editar-comprovante">
+								Comprovante de pagamento
+							</FieldLabel>
+							<Input
+								ref={comprovanteInputRef}
+								id="editar-comprovante"
+								name="comprovante"
+								type="file"
+								accept=".pdf,.jpg,.jpeg,.png,.webp"
+								disabled={busy}
+								className="cursor-pointer"
+							/>
+							<p className="mt-1 text-xs text-muted-foreground">
+								Deixe em branco para manter o atual
+							</p>
+						</Field>
+					)}
 
 					{fetcher.data?.error && (
 						<p className="text-sm text-destructive">{fetcher.data.error}</p>
