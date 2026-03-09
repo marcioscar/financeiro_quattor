@@ -23,4 +23,4 @@ COPY --from=production-dependencies-env /app/node_modules /app/node_modules
 COPY --from=build-env /app/build /app/build
 WORKDIR /app
 EXPOSE 3001
-CMD ["npx", "react-router-serve", "./build/server/index.js"]
+CMD ["npm", "run", "start"]

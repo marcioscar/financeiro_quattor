@@ -110,13 +110,35 @@ export async function criarSalarioAPagar(
 	});
 }
 
+function getMesAtual(): { mes: number; ano: number } {
+	const hoje = new Date();
+	return { mes: hoje.getMonth(), ano: hoje.getFullYear() };
+}
+
+function somaSalariosPagosMesAtual(
+	salarios: { valor?: number | null; pago?: boolean | null; data?: Date | null }[],
+): number {
+	const { mes, ano } = getMesAtual();
+	return (salarios ?? []).reduce((acc, s) => {
+		if (s.pago !== true || s.valor == null || !s.data) return acc;
+		const d = new Date(s.data);
+		if (d.getMonth() === mes && d.getFullYear() === ano) {
+			return acc + s.valor;
+		}
+		return acc;
+	}, 0);
+}
+
 export async function getFolhasComSalariosUltimos3Meses() {
 	const folhas = await db.folha.findMany({
 		orderBy: { nome: "asc" },
 	});
 
-	return folhas.map((folha) => {
+	let totalSalariosPagosMesAtual = 0;
+
+	const resultado = folhas.map((folha) => {
 		const salarios = folha.salarios ?? [];
+		totalSalariosPagosMesAtual += somaSalariosPagosMesAtual(salarios);
 		return {
 			...folha,
 			salariosUltimos3Meses: filtrarSalariosUltimos3Meses(salarios),
@@ -124,6 +146,8 @@ export async function getFolhasComSalariosUltimos3Meses() {
 			salarioAPagarDetalhes: obterSalarioAPagarDetalhes(salarios),
 		};
 	});
+
+	return { folhas: resultado, totalSalariosPagosMesAtual };
 }
 
 export async function atualizarSalarioAPagar(

@@ -17,7 +17,7 @@ export async function createDespesa(data: {
 			valor: data.valor,
 			data: data.data,
 			tipo: data.tipo,
-			pago: data.pago ?? false,
+			pago: data.pago ?? true,
 			recibo_path: data.recibo_path ?? null,
 			boleto_path: data.boleto_path ?? null,
 		},

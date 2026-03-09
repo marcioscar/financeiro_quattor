@@ -159,7 +159,7 @@ export async function action({ request }: Route.ActionArgs) {
 				valor,
 				data,
 				tipo: tipo.trim(),
-				pago: false,
+				pago: true,
 				recibo_path: reciboPath,
 			});
 			return { success: true };

@@ -48,10 +48,9 @@ const styles = StyleSheet.create({
 		width: 30,
 	},
 	exercicioNome: {
-		fontSize: 14,
+		fontSize: 20,
 		fontWeight: "bold",
 		flex: 1,
-		textTransform: "uppercase",
 	},
 	repeticoesLinha: {
 		flexDirection: "row",
@@ -65,7 +64,7 @@ const styles = StyleSheet.create({
 		height: 14,
 	},
 	repeticoes: {
-		fontSize: 16,
+		fontSize: 20,
 		color: "#000",
 	},
 	blocoExercicio: {
@@ -148,12 +147,12 @@ function FolhaGrupo({
 									{toTitleCase(String(ex.exercicio ?? "").trim()) || "—"}
 								</Text>
 							</View>
-						<View style={styles.repeticoesLinha}>
-							<Image src={rotateCcwSrc} style={styles.repeticoesIcon} />
-							<Text style={styles.repeticoes}>
-								{String(ex.repeticoes ?? "").trim() || "—"}
-							</Text>
-						</View>
+							<View style={styles.repeticoesLinha}>
+								<Image src={rotateCcwSrc} style={styles.repeticoesIcon} />
+								<Text style={styles.repeticoes}>
+									{String(ex.repeticoes ?? "").trim() || "—"}
+								</Text>
+							</View>
 						</View>
 						{i < exercicios.length - 1 && (
 							<View style={styles.blocoExercicioLinha} />

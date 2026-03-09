@@ -57,8 +57,9 @@ function formatarMoeda(valor: number | null | undefined): string {
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
-	const folhas = await getFolhasComSalariosUltimos3Meses();
-	return { folhas };
+	const { folhas, totalSalariosPagosMesAtual } =
+		await getFolhasComSalariosUltimos3Meses();
+	return { folhas, totalSalariosPagosMesAtual };
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -231,7 +232,8 @@ function isSalarioPagarNoMesAtual(
 }
 
 export default function Folha() {
-	const { folhas } = useLoaderData<typeof loader>();
+	const { folhas, totalSalariosPagosMesAtual } =
+		useLoaderData<typeof loader>();
 	const [filtroNome, setFiltroNome] = useState<string | null>();
 	const [mostrarSemSalarioPagar, setMostrarSemSalarioPagar] = useState(false);
 	const anchorRef = useComboboxAnchor();
@@ -274,13 +276,23 @@ export default function Folha() {
 				<h1 className='text-xl font-medium tracking-tight text-orange-500'>
 					Folha de Pagamento
 				</h1>
-				<div className='rounded-lg border bg-stone-50 px-4 py-2'>
-					<p className='text-xs font-medium text-stone-400-700'>
-						Total a pagar no mês
-					</p>
-					<p className='text-lg font-semibold text-orange-600'>
-						{formatarMoeda(totalSalariosAPagarMesAtual)}
-					</p>
+				<div className='flex flex-wrap gap-4'>
+					<div className='rounded-lg border bg-stone-50 px-4 py-2'>
+						<p className='text-xs font-medium text-stone-500'>
+							Total a pagar no mês
+						</p>
+						<p className='text-lg font-semibold text-orange-600'>
+							{formatarMoeda(totalSalariosAPagarMesAtual)}
+						</p>
+					</div>
+					<div className='rounded-lg border bg-stone-50 px-4 py-2'>
+						<p className='text-xs font-medium text-stone-500'>
+							Salários pagos no mês
+						</p>
+						<p className='text-lg font-semibold text-green-600'>
+							{formatarMoeda(totalSalariosPagosMesAtual)}
+						</p>
+					</div>
 				</div>
 			</div>
 			<div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
