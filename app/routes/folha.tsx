@@ -1,4 +1,9 @@
-import { ChevronDown, Wallet } from "lucide-react";
+import {
+	BarChart3,
+	ChevronDown,
+	PieChart as PieChartIcon,
+	Wallet,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import type { Route } from "./+types/folha";
 import { useLoaderData } from "react-router";
@@ -39,8 +44,48 @@ import {
 	getFolhasComSalariosUltimos3Meses,
 	getMesAtual,
 } from "~/models/folha.server";
+import {
+	Bar,
+	BarChart,
+	CartesianGrid,
+	Cell,
+	Pie,
+	PieChart,
+	XAxis,
+	YAxis,
+} from "recharts";
+import type { ChartConfig } from "~/components/ui/chart";
+import {
+	ChartContainer,
+	ChartLegend,
+	ChartLegendContent,
+	ChartTooltip,
+	ChartTooltipContent,
+} from "~/components/ui/chart";
 
 const TODOS = "Todos";
+
+const MESES_NOME = [
+	"Jan",
+	"Fev",
+	"Mar",
+	"Abr",
+	"Mai",
+	"Jun",
+	"Jul",
+	"Ago",
+	"Set",
+	"Out",
+	"Nov",
+	"Dez",
+];
+
+const chartConfigSalarios: ChartConfig = {
+	total: {
+		label: "Total pago",
+		color: "var(--chart-2)",
+	},
+} as const;
 
 function formatarData(date: Date | null | undefined): string {
 	if (!date) return "-";
@@ -315,6 +360,125 @@ export default function Folha() {
 		}, 0);
 	}, [folhas]);
 
+	const graficoSalariosUltimos3Meses = useMemo(() => {
+		const porMes = new Map<
+			string,
+			{ mes: number; ano: number; total: number }
+		>();
+		const hoje = new Date();
+		const mesHoje = hoje.getMonth();
+		const anoHoje = hoje.getFullYear();
+		const mesesValidos = new Set<string>();
+		for (let i = 0; i < 4; i++) {
+			const d = new Date(anoHoje, mesHoje - i, 1);
+			mesesValidos.add(`${d.getFullYear()}-${d.getMonth()}`);
+		}
+
+		for (const folha of folhas) {
+			for (const sal of folha.salariosUltimos3Meses ?? []) {
+				if (sal.data == null || sal.valor == null) continue;
+				const d = new Date(sal.data);
+				const mes = d.getMonth();
+				const ano = d.getFullYear();
+				const key = `${ano}-${mes}`;
+				if (!mesesValidos.has(key)) continue;
+				const atual = porMes.get(key);
+				if (atual) {
+					atual.total += sal.valor;
+				} else {
+					porMes.set(key, { mes, ano, total: sal.valor });
+				}
+			}
+		}
+
+		return Array.from(porMes.values())
+			.sort(
+				(a, b) =>
+					new Date(a.ano, a.mes).getTime() - new Date(b.ano, b.mes).getTime(),
+			)
+			.map(({ mes, ano, total }) => ({
+				mesLabel: `${MESES_NOME[mes]}/${String(ano).slice(-2)}`,
+				total,
+			}));
+	}, [folhas]);
+
+	const CORES_GRAFICO = [
+		"var(--chart-1)",
+		"var(--chart-2)",
+		"var(--chart-3)",
+		"var(--chart-4)",
+		"var(--chart-5)",
+	];
+
+	const graficoPizzaSalariosPorArea = useMemo(() => {
+		const porArea = new Map<string, number>();
+		for (const folha of folhas) {
+			const detalhes = folha.salarioMesAtualDetalhes;
+			if (!detalhes?.valor) continue;
+			const area = folha.funcao || "Outros";
+			porArea.set(area, (porArea.get(area) ?? 0) + detalhes.valor);
+		}
+		return Array.from(porArea.entries())
+			.map(([name, value]) => ({ name, value }))
+			.sort((a, b) => b.value - a.value);
+	}, [folhas]);
+
+	const chartConfigPizza = useMemo(
+		() =>
+			({
+				...Object.fromEntries(
+					graficoPizzaSalariosPorArea.map((item, i) => [
+						item.name,
+						{
+							label: item.name,
+							color: `var(--chart-${(i % 5) + 1})`,
+						},
+					]),
+				),
+			}) satisfies ChartConfig,
+		[graficoPizzaSalariosPorArea],
+	);
+
+	const graficoPizzaSalariosPorModalidade = useMemo(() => {
+		const porModalidade = new Map<string, number>();
+		for (const folha of folhas) {
+			const detalhes = folha.salarioMesAtualDetalhes;
+			if (!detalhes?.valor) continue;
+			const modalidade = folha.modalidade || "Outros";
+			porModalidade.set(
+				modalidade,
+				(porModalidade.get(modalidade) ?? 0) + detalhes.valor,
+			);
+		}
+		return Array.from(porModalidade.entries())
+			.map(([name, value]) => ({ name, value }))
+			.sort((a, b) => b.value - a.value);
+	}, [folhas]);
+
+	const chartConfigPizzaModalidade = useMemo(
+		() =>
+			({
+				...Object.fromEntries(
+					graficoPizzaSalariosPorModalidade.map((item, i) => [
+						item.name,
+						{
+							label: item.name,
+							color: `var(--chart-${(i % 5) + 1})`,
+						},
+					]),
+				),
+			}) satisfies ChartConfig,
+		[graficoPizzaSalariosPorModalidade],
+	);
+
+	function formatarMoedaEixo(v: unknown): string {
+		const num = typeof v === "number" && !isNaN(v) ? v : 0;
+		return new Intl.NumberFormat("pt-BR", {
+			maximumFractionDigits: 0,
+			minimumFractionDigits: 0,
+		}).format(num);
+	}
+
 	return (
 		<div className='space-y-6'>
 			<div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
@@ -477,6 +641,194 @@ export default function Folha() {
 					</CardContent>
 				</Card>
 			)}
+
+			<div className='mt-8 space-y-8'>
+				<div className='grid gap-8 lg:grid-cols-2'>
+					<Card>
+						<CardHeader>
+							<div className='flex items-center gap-2'>
+								<PieChartIcon className='h-5 w-5 text-orange-500' />
+								<CardTitle>Salários por área — mês atual</CardTitle>
+							</div>
+						</CardHeader>
+						<CardContent>
+							{graficoPizzaSalariosPorArea.length > 0 ? (
+								<ChartContainer
+									config={chartConfigPizza}
+									className='mx-auto aspect-square h-[300px] max-w-[400px]'>
+									<PieChart>
+										<ChartTooltip
+											content={
+												<ChartTooltipContent
+													hideIndicator
+													formatter={(value, name) => (
+														<div className='flex flex-col gap-0.5'>
+															<span className='font-medium'>{name}</span>
+															<span className='font-mono text-foreground'>
+																{new Intl.NumberFormat("pt-BR", {
+																	style: "currency",
+																	currency: "BRL",
+																}).format(value as number)}
+															</span>
+														</div>
+													)}
+												/>
+											}
+										/>
+										<Pie
+											data={graficoPizzaSalariosPorArea}
+											dataKey='value'
+											nameKey='name'
+											cx='50%'
+											cy='50%'
+											innerRadius={60}
+											outerRadius={100}
+											strokeWidth={0}>
+											{graficoPizzaSalariosPorArea.map((_, index) => (
+												<Cell
+													key={`cell-${index}`}
+													fill={CORES_GRAFICO[index % CORES_GRAFICO.length]}
+												/>
+											))}
+										</Pie>
+										<ChartLegend content={<ChartLegendContent />} />
+									</PieChart>
+								</ChartContainer>
+							) : (
+								<div className='flex h-[200px] items-center justify-center rounded-lg border border-dashed bg-muted/30'>
+									<p className='text-sm text-muted-foreground'>
+										Sem dados de salários no mês atual
+									</p>
+								</div>
+							)}
+						</CardContent>
+					</Card>
+
+					<Card>
+						<CardHeader>
+							<div className='flex items-center gap-2'>
+								<PieChartIcon className='h-5 w-5 text-orange-500' />
+								<CardTitle>Salários por modalidade — mês atual</CardTitle>
+							</div>
+						</CardHeader>
+						<CardContent>
+							{graficoPizzaSalariosPorModalidade.length > 0 ? (
+								<ChartContainer
+									config={chartConfigPizzaModalidade}
+									className='mx-auto aspect-square h-[300px] max-w-[400px]'>
+									<PieChart>
+										<ChartTooltip
+											content={
+												<ChartTooltipContent
+													hideIndicator
+													formatter={(value, name) => (
+														<div className='flex flex-col gap-0.5'>
+															<span className='font-medium'>{name}</span>
+															<span className='font-mono text-foreground'>
+																{new Intl.NumberFormat("pt-BR", {
+																	style: "currency",
+																	currency: "BRL",
+																}).format(value as number)}
+															</span>
+														</div>
+													)}
+												/>
+											}
+										/>
+										<Pie
+											data={graficoPizzaSalariosPorModalidade}
+											dataKey='value'
+											nameKey='name'
+											cx='50%'
+											cy='50%'
+											innerRadius={60}
+											outerRadius={100}
+											strokeWidth={0}>
+											{graficoPizzaSalariosPorModalidade.map((_, index) => (
+												<Cell
+													key={`cell-mod-${index}`}
+													fill={CORES_GRAFICO[index % CORES_GRAFICO.length]}
+												/>
+											))}
+										</Pie>
+										<ChartLegend
+											content={
+												<ChartLegendContent className='flex-wrap justify-center' />
+											}
+										/>
+									</PieChart>
+								</ChartContainer>
+							) : (
+								<div className='flex h-[200px] items-center justify-center rounded-lg border border-dashed bg-muted/30'>
+									<p className='text-sm text-muted-foreground'>
+										Sem dados de salários no mês atual
+									</p>
+								</div>
+							)}
+						</CardContent>
+					</Card>
+				</div>
+
+				<Card>
+					<CardHeader>
+						<div className='flex items-center gap-2'>
+							<BarChart3 className='h-5 w-5 text-orange-500' />
+							<CardTitle>Comparativo de salários — últimos meses</CardTitle>
+						</div>
+					</CardHeader>
+					<CardContent>
+						{graficoSalariosUltimos3Meses.length > 0 ? (
+							<ChartContainer
+								config={chartConfigSalarios}
+								className='h-[280px] w-full'>
+								<BarChart
+									data={graficoSalariosUltimos3Meses}
+									margin={{ bottom: 20 }}>
+									<CartesianGrid strokeDasharray='3 3' vertical={false} />
+									<XAxis
+										dataKey='mesLabel'
+										tickLine={false}
+										axisLine={false}
+										tickMargin={8}
+									/>
+									<YAxis
+										tickLine={false}
+										axisLine={false}
+										tickMargin={8}
+										tickFormatter={(v) => formatarMoedaEixo(v)}
+									/>
+									<ChartTooltip
+										content={
+											<ChartTooltipContent
+												formatter={(value) =>
+													new Intl.NumberFormat("pt-BR", {
+														style: "currency",
+														currency: "BRL",
+													}).format(value as number)
+												}
+											/>
+										}
+									/>
+									<Bar dataKey='total' radius={[4, 4, 0, 0]}>
+										{graficoSalariosUltimos3Meses.map((_, idx) => (
+											<Cell
+												key={idx}
+												fill={CORES_GRAFICO[idx % CORES_GRAFICO.length]}
+											/>
+										))}
+									</Bar>
+								</BarChart>
+							</ChartContainer>
+						) : (
+							<div className='flex h-[200px] items-center justify-center rounded-lg border border-dashed bg-muted/30'>
+								<p className='text-sm text-muted-foreground'>
+									Sem dados de salários nos últimos meses
+								</p>
+							</div>
+						)}
+					</CardContent>
+				</Card>
+			</div>
 		</div>
 	);
 }
