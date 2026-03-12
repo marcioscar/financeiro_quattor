@@ -20,16 +20,7 @@ import {
 	SelectValue,
 } from "~/components/ui/select";
 
-const CONTAS = [
-	"Gas",
-	"Servicos",
-	"Impostos",
-	"Pessoal",
-	"Transporte",
-	"FCO",
-	"Piscina",
-	"Pro-labore",
-] as const;
+import { CONTAS } from "./contas";
 
 const TIPOS = ["fixa", "variavel"] as const;
 

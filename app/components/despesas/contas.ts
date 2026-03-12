@@ -1,0 +1,15 @@
+export const CONTAS = [
+    "Contador",
+    "Despesas Finaneiras",
+    "FCO",
+    "Gas",
+    "Impostos",
+    "Manutencao",
+    "Pessoal",
+    "Piscina",
+    "Pro-labore",
+    "Saude",
+    "Servicos",
+    "Sistemas",
+    "Transporte",
+] as const;

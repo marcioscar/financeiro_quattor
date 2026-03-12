@@ -5,7 +5,13 @@
 
 import * as XLSX from "xlsx";
 import path from "node:path";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+
+const NOME_ARQUIVO = "Contas_receber.xlsx";
+
+function getDadosPath(): string {
+	return path.join(process.cwd(), "app", "dados", NOME_ARQUIVO);
+}
 
 const COL_VALOR_BAIXA = 10;
 
@@ -20,13 +26,7 @@ function toNum(val: unknown): number {
  */
 export function getRecebimentosDoMesAtual(): { valor: number; erro?: string } {
 	try {
-		const dataPath = path.join(
-			process.cwd(),
-			"app",
-			"dados",
-			"Contas_receber.xlsx",
-		);
-		const buffer = readFileSync(dataPath);
+		const buffer = readFileSync(getDadosPath());
 		const workbook = XLSX.read(buffer, { type: "buffer" });
 		const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
 		if (!firstSheet) return { valor: 0, erro: "Planilha vazia" };
@@ -49,4 +49,12 @@ export function getRecebimentosDoMesAtual(): { valor: number; erro?: string } {
 		const msg = err instanceof Error ? err.message : "Erro desconhecido";
 		return { valor: 0, erro: `Erro ao ler recebimentos: ${msg}` };
 	}
+}
+
+/** Salva arquivo Excel enviado para app/dados/Contas_receber.xlsx */
+export async function salvarContasReceber(buffer: Buffer): Promise<void> {
+	const dataPath = getDadosPath();
+	const dir = path.dirname(dataPath);
+	mkdirSync(dir, { recursive: true });
+	writeFileSync(dataPath, buffer);
 }

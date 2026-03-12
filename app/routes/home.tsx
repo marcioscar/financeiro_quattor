@@ -1,5 +1,5 @@
-import { useMemo } from "react";
-import { useLoaderData, useSearchParams } from "react-router";
+import { useRef, useMemo } from "react";
+import { useLoaderData, useSearchParams, useFetcher } from "react-router";
 import type { Route } from "./+types/home";
 import { getAlunosAtivos, getCancelamentosNoMes } from "~/models/evo.server";
 import {
@@ -7,8 +7,12 @@ import {
 	getDespesasPorCategoriaDoMes,
 	getDespesasTotaisDoMes,
 } from "~/models/despesas.server";
-import { getRecebimentosDoMesAtual } from "~/models/recebimentos.server";
+import {
+	getRecebimentosDoMesAtual,
+	salvarContasReceber,
+} from "~/models/recebimentos.server";
 import { getFaturamentoDoMes } from "~/models/receitas.server";
+import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import {
 	Select,
@@ -31,6 +35,7 @@ import {
 	Percent,
 	BarChart3,
 	PieChart as PieChartIcon,
+	Upload,
 } from "lucide-react";
 import {
 	Bar,
@@ -93,6 +98,35 @@ export function meta({}: Route.MetaArgs) {
 		{ title: "Financeiro Quattor" },
 		{ name: "description", content: "Financeiro Quattor" },
 	];
+}
+
+export async function action({ request }: Route.ActionArgs) {
+	if (request.method !== "POST") return null;
+
+	const formData = await request.formData();
+	const intent = formData.get("intent");
+
+	if (intent === "upload_contas_receber") {
+		const file = formData.get("arquivo");
+		if (!(file instanceof File) || file.size === 0) {
+			return { error: "Selecione um arquivo Excel (.xlsx)" };
+		}
+		const ext = file.name.toLowerCase().slice(-5);
+		if (!ext.endsWith(".xlsx") && !ext.endsWith(".xls")) {
+			return { error: "Formato inválido. Use .xlsx ou .xls" };
+		}
+		try {
+			const buffer = Buffer.from(await file.arrayBuffer());
+			await salvarContasReceber(buffer);
+			return { success: true };
+		} catch (err) {
+			const msg =
+				err instanceof Error ? err.message : "Erro ao salvar arquivo";
+			return { error: msg };
+		}
+	}
+
+	return null;
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
@@ -175,6 +209,8 @@ export async function loader({ request }: Route.LoaderArgs) {
 
 export default function Home() {
 	const [searchParams, setSearchParams] = useSearchParams();
+	const fetcher = useFetcher<{ success?: boolean; error?: string }>();
+	const fileInputRef = useRef<HTMLInputElement>(null);
 	const {
 		mes,
 		ano,
@@ -284,8 +320,47 @@ export default function Home() {
 							))}
 						</SelectContent>
 					</Select>
+					<fetcher.Form method="post" className="flex items-center">
+						<input type="hidden" name="intent" value="upload_contas_receber" />
+						<input
+							ref={fileInputRef}
+							type="file"
+							name="arquivo"
+							accept=".xlsx,.xls"
+							className="hidden"
+							onChange={(e) => {
+								const form = e.target.form;
+								if (form && e.target.files?.[0]) {
+									fetcher.submit(form, { method: "post" });
+								}
+							}}
+						/>
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							onClick={() => fileInputRef.current?.click()}
+							disabled={fetcher.state !== "idle"}
+						>
+							<Upload className="mr-2 h-4 w-4" />
+							{fetcher.state === "submitting"
+								? "Enviando..."
+								: "Enviar Excel contas a receber"}
+						</Button>
+					</fetcher.Form>
 				</div>
 			</div>
+
+			{fetcher.data?.error && (
+				<div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/50 dark:text-red-200">
+					{fetcher.data.error}
+				</div>
+			)}
+			{fetcher.data?.success && fetcher.state === "idle" && (
+				<div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-200">
+					Arquivo salvo com sucesso. A Receita Recorrente foi atualizada.
+				</div>
+			)}
 
 			<div className='grid grid-cols-1 gap-6 md:grid-cols-3'>
 				<Card>

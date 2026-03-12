@@ -20,18 +20,7 @@ import {
 	SelectValue,
 } from "~/components/ui/select";
 import type { Despesa } from "~/components/columns-desp";
-
-const CONTAS = [
-	"Gas",
-	"Revenda",
-	"Servicos",
-	"Impostos",
-	"Pessoal",
-	"Transporte",
-	"FCO",
-	"Piscina",
-	"Pro-labore",
-] as const;
+import { CONTAS } from "./contas";
 
 const TIPOS = ["fixa", "variavel"] as const;
 
@@ -85,8 +74,7 @@ export function DialogEditarDespesa({
 
 	function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
 		e.preventDefault();
-		if (!conta.trim() || !descricao.trim() || !valor || !data || !tipo)
-			return;
+		if (!conta.trim() || !descricao.trim() || !valor || !data || !tipo) return;
 
 		const valorNum = parseFloat(valor.replace(",", "."));
 		if (isNaN(valorNum) || valorNum < 0) return;
@@ -137,10 +125,7 @@ export function DialogEditarDespesa({
 	function handleExcluir() {
 		if (!confirm("Tem certeza que deseja excluir esta despesa?")) return;
 
-		fetcher.submit(
-			{ intent: "excluir", id: despesa.id },
-			{ method: "post" },
-		);
+		fetcher.submit({ intent: "excluir", id: despesa.id }, { method: "post" });
 	}
 
 	useEffect(() => {
@@ -179,22 +164,26 @@ export function DialogEditarDespesa({
 				</DialogHeader>
 				<fetcher.Form
 					onSubmit={handleSubmit}
-					encType="multipart/form-data"
-					className="space-y-4"
-				>
+					encType='multipart/form-data'
+					className='space-y-4'>
 					<Field>
-						<FieldLabel htmlFor="editar-conta">Conta</FieldLabel>
+						<FieldLabel htmlFor='editar-conta'>Conta</FieldLabel>
 						<Select
 							value={conta}
 							onValueChange={setConta}
 							disabled={busy}
-							required
-						>
-							<SelectTrigger id="editar-conta" className="w-full">
-								<SelectValue placeholder="Selecione a conta" />
+							required>
+							<SelectTrigger id='editar-conta' className='w-full'>
+								<SelectValue placeholder='Selecione a conta' />
 							</SelectTrigger>
 							<SelectContent>
-								{CONTAS.map((c) => (
+								{[
+									...(conta &&
+									!CONTAS.includes(conta as (typeof CONTAS)[number])
+										? [conta]
+										: []),
+									...CONTAS,
+								].map((c) => (
 									<SelectItem key={c} value={c}>
 										{c}
 									</SelectItem>
@@ -203,10 +192,10 @@ export function DialogEditarDespesa({
 						</Select>
 					</Field>
 					<Field>
-						<FieldLabel htmlFor="editar-descricao">Descrição</FieldLabel>
+						<FieldLabel htmlFor='editar-descricao'>Descrição</FieldLabel>
 						<Input
-							id="editar-descricao"
-							placeholder="Descrição da despesa"
+							id='editar-descricao'
+							placeholder='Descrição da despesa'
 							value={descricao}
 							onChange={(e) => setDescricao(e.target.value)}
 							disabled={busy}
@@ -214,12 +203,12 @@ export function DialogEditarDespesa({
 						/>
 					</Field>
 					<Field>
-						<FieldLabel htmlFor="editar-valor">Valor (R$)</FieldLabel>
+						<FieldLabel htmlFor='editar-valor'>Valor (R$)</FieldLabel>
 						<Input
-							id="editar-valor"
-							type="text"
-							inputMode="decimal"
-							placeholder="0,00"
+							id='editar-valor'
+							type='text'
+							inputMode='decimal'
+							placeholder='0,00'
 							value={valor}
 							onChange={(e) => setValor(e.target.value)}
 							disabled={busy}
@@ -227,10 +216,10 @@ export function DialogEditarDespesa({
 						/>
 					</Field>
 					<Field>
-						<FieldLabel htmlFor="editar-data">Data</FieldLabel>
+						<FieldLabel htmlFor='editar-data'>Data</FieldLabel>
 						<Input
-							id="editar-data"
-							type="date"
+							id='editar-data'
+							type='date'
 							value={data}
 							onChange={(e) => setData(e.target.value)}
 							disabled={busy}
@@ -238,15 +227,14 @@ export function DialogEditarDespesa({
 						/>
 					</Field>
 					<Field>
-						<FieldLabel htmlFor="editar-tipo">Tipo</FieldLabel>
+						<FieldLabel htmlFor='editar-tipo'>Tipo</FieldLabel>
 						<Select
 							value={tipo}
 							onValueChange={setTipo}
 							disabled={busy}
-							required
-						>
-							<SelectTrigger id="editar-tipo" className="w-full">
-								<SelectValue placeholder="Selecione o tipo" />
+							required>
+							<SelectTrigger id='editar-tipo' className='w-full'>
+								<SelectValue placeholder='Selecione o tipo' />
 							</SelectTrigger>
 							<SelectContent>
 								{TIPOS.map((t) => (
@@ -259,17 +247,16 @@ export function DialogEditarDespesa({
 					</Field>
 					{variant === "contas_a_pagar" && (
 						<Field>
-							<div className="flex items-center gap-2">
+							<div className='flex items-center gap-2'>
 								<Checkbox
-									id="editar-pago"
+									id='editar-pago'
 									checked={pago}
 									onCheckedChange={(v) => setPago(!!v)}
 									disabled={busy}
 								/>
 								<FieldLabel
-									htmlFor="editar-pago"
-									className="cursor-pointer font-normal"
-								>
+									htmlFor='editar-pago'
+									className='cursor-pointer font-normal'>
 									Marcar como pago
 								</FieldLabel>
 							</div>
@@ -278,34 +265,34 @@ export function DialogEditarDespesa({
 					{variant === "contas_a_pagar" ? (
 						<>
 							<Field>
-								<FieldLabel htmlFor="editar-boleto">Boleto</FieldLabel>
+								<FieldLabel htmlFor='editar-boleto'>Boleto</FieldLabel>
 								<Input
 									ref={boletoInputRef}
-									id="editar-boleto"
-									name="boleto"
-									type="file"
-									accept=".pdf,.jpg,.jpeg,.png,.webp"
+									id='editar-boleto'
+									name='boleto'
+									type='file'
+									accept='.pdf,.jpg,.jpeg,.png,.webp'
 									disabled={busy}
-									className="cursor-pointer"
+									className='cursor-pointer'
 								/>
-								<p className="mt-1 text-xs text-muted-foreground">
+								<p className='mt-1 text-xs text-muted-foreground'>
 									Deixe em branco para manter o atual
 								</p>
 							</Field>
 							<Field>
-								<FieldLabel htmlFor="editar-comprovante">
+								<FieldLabel htmlFor='editar-comprovante'>
 									Comprovante de pagamento
 								</FieldLabel>
 								<Input
 									ref={comprovanteInputRef}
-									id="editar-comprovante"
-									name="comprovante"
-									type="file"
-									accept=".pdf,.jpg,.jpeg,.png,.webp"
+									id='editar-comprovante'
+									name='comprovante'
+									type='file'
+									accept='.pdf,.jpg,.jpeg,.png,.webp'
 									disabled={busy}
-									className="cursor-pointer"
+									className='cursor-pointer'
 								/>
-								<p className="mt-1 text-xs text-muted-foreground">
+								<p className='mt-1 text-xs text-muted-foreground'>
 									Envie o comprovante ao marcar como pago. Deixe em branco para
 									manter o atual.
 								</p>
@@ -313,51 +300,49 @@ export function DialogEditarDespesa({
 						</>
 					) : (
 						<Field>
-							<FieldLabel htmlFor="editar-comprovante">
+							<FieldLabel htmlFor='editar-comprovante'>
 								Comprovante de pagamento
 							</FieldLabel>
 							<Input
 								ref={comprovanteInputRef}
-								id="editar-comprovante"
-								name="comprovante"
-								type="file"
-								accept=".pdf,.jpg,.jpeg,.png,.webp"
+								id='editar-comprovante'
+								name='comprovante'
+								type='file'
+								accept='.pdf,.jpg,.jpeg,.png,.webp'
 								disabled={busy}
-								className="cursor-pointer"
+								className='cursor-pointer'
 							/>
-							<p className="mt-1 text-xs text-muted-foreground">
+							<p className='mt-1 text-xs text-muted-foreground'>
 								Deixe em branco para manter o atual
 							</p>
 						</Field>
 					)}
 
 					{fetcher.data?.error && (
-						<p className="text-sm text-destructive">{fetcher.data.error}</p>
+						<p className='text-sm text-destructive'>{fetcher.data.error}</p>
 					)}
 
-					<DialogFooter className="flex-col gap-2 sm:flex-row">
-						<div className="flex flex-1 justify-start">
+					<DialogFooter className='flex-col gap-2 sm:flex-row'>
+						<div className='flex flex-1 justify-start'>
 							<Button
-								type="button"
-								variant="destructive"
-								size="sm"
+								type='button'
+								variant='destructive'
+								size='sm'
 								onClick={handleExcluir}
-								disabled={busy}
-							>
-								<Trash2 className="size-4" />
+								disabled={busy}>
+								<Trash2 className='size-4' />
 								Excluir
 							</Button>
 						</div>
-						<div className="flex gap-2">
+						<div className='flex gap-2'>
 							<Button
-								type="button"
-								variant="outline"
+								type='button'
+								variant='outline'
 								onClick={onClose}
-								disabled={busy}
-							>
+								disabled={busy}>
 								Cancelar
 							</Button>
-							<Button type="submit" disabled={busy || !isValid}>
+							<Button type='submit' disabled={busy || !isValid}>
 								{busy ? "Salvando..." : "Salvar"}
 							</Button>
 						</div>
