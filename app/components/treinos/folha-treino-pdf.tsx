@@ -41,6 +41,7 @@ const styles = StyleSheet.create({
 	},
 	exercicioLinha: {
 		flexDirection: "row",
+		alignItems: "center",
 		marginBottom: 4,
 	},
 	exercicioNumero: {
@@ -72,8 +73,8 @@ const styles = StyleSheet.create({
 	},
 	blocoExercicioLinha: {
 		width: "100%",
-		height: 1,
-		backgroundColor: "#eee",
+		height: 2,
+		backgroundColor: "#ccc",
 		marginBottom: 12,
 	},
 	footer: {
@@ -83,7 +84,7 @@ const styles = StyleSheet.create({
 		right: 40,
 		flexDirection: "row",
 		alignItems: "center",
-		justifyContent: "flex-start",
+		justifyContent: "flex-end",
 		gap: 12,
 	},
 	footerBolas: {
@@ -142,7 +143,7 @@ function FolhaGrupo({
 					<View key={i}>
 						<View style={styles.blocoExercicio}>
 							<View style={styles.exercicioLinha}>
-								<Text style={styles.exercicioNumero}>{i + 1} -</Text>
+								<Text style={styles.exercicioNumero}>{i + 1}</Text>
 								<Text style={styles.exercicioNome}>
 									{toTitleCase(String(ex.exercicio ?? "").trim()) || "—"}
 								</Text>

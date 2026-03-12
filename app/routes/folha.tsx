@@ -32,10 +32,12 @@ import { DialogNovoSalario } from "~/components/folha/dialog-novo-salario";
 import {
 	atualizarFuncionario,
 	atualizarSalarioAPagar,
+	atualizarSalarioPorMesAno,
 	criarFuncionario,
 	criarSalarioAPagar,
 	excluirFuncionario,
 	getFolhasComSalariosUltimos3Meses,
+	getMesAtual,
 } from "~/models/folha.server";
 
 const TODOS = "Todos";
@@ -186,6 +188,50 @@ export async function action({ request }: Route.ActionArgs) {
 		}
 	}
 
+	if (intent === "editarSalarioMesAtual") {
+		const folhaId = formData.get("folhaId");
+		const valorStr = formData.get("valor");
+		const dataStr = formData.get("data");
+		const marcarComoPago = formData.get("marcarComoPago") === "1";
+
+		if (
+			typeof folhaId !== "string" ||
+			!folhaId ||
+			typeof valorStr !== "string" ||
+			!valorStr ||
+			typeof dataStr !== "string" ||
+			!dataStr
+		) {
+			return { error: "Preencha todos os campos" };
+		}
+
+		const valor = parseFloat(valorStr.replace(",", "."));
+		if (isNaN(valor) || valor <= 0) {
+			return { error: "Valor inválido" };
+		}
+
+		const data = new Date(dataStr);
+		if (isNaN(data.getTime())) {
+			return { error: "Data inválida" };
+		}
+
+		const { mes, ano } = getMesAtual();
+
+		try {
+			await atualizarSalarioPorMesAno(
+				folhaId,
+				mes,
+				ano,
+				valor,
+				data,
+				marcarComoPago,
+			);
+			return { success: true };
+		} catch {
+			return { error: "Erro ao atualizar salário do mês" };
+		}
+	}
+
 	const folhaId = formData.get("folhaId");
 	const valorStr = formData.get("valor");
 	const dataStr = formData.get("data");
@@ -232,8 +278,7 @@ function isSalarioPagarNoMesAtual(
 }
 
 export default function Folha() {
-	const { folhas, totalSalariosPagosMesAtual } =
-		useLoaderData<typeof loader>();
+	const { folhas, totalSalariosPagosMesAtual } = useLoaderData<typeof loader>();
 	const [filtroNome, setFiltroNome] = useState<string | null>();
 	const [mostrarSemSalarioPagar, setMostrarSemSalarioPagar] = useState(false);
 	const anchorRef = useComboboxAnchor();
@@ -336,7 +381,9 @@ export default function Folha() {
 
 			<div className='grid gap-4 md:grid-cols-3 lg:grid-cols-3'>
 				{folhasFiltradas.map((folha) => (
-					<Card key={folha.id} className='overflow-hidden bg-stone-50'>
+					<Card
+						key={folha.id}
+						className={`overflow-hidden ${folha.salarioMesAtualDetalhes?.pago ? "bg-stone-50" : "bg-orange-100"}`}>
 						<CardHeader className='pb-2'>
 							<CardTitle className='text-base'>{folha.nome}</CardTitle>
 							<CardAction>
@@ -351,20 +398,43 @@ export default function Folha() {
 							<CardDescription className='text-xs font-extralight text-muted-foreground'>
 								{folha.funcao} • {folha.modalidade}
 							</CardDescription>
-							{folha.salarioAPagar != null && folha.salarioAPagarDetalhes && (
+							{folha.salarioMesAtualDetalhes && (
 								<div className='flex items-center gap-2'>
 									<p className='text-sm font-medium text-amber-600'>
-										{formatarMoeda(folha.salarioAPagar)}
+										{formatarMoeda(folha.salarioMesAtualDetalhes.valor)}
+										{folha.salarioMesAtualDetalhes.pago && (
+											<span className='ml-1 text-xs font-normal text-green-600'>
+												(pago)
+											</span>
+										)}
 									</p>
 									<DialogEditarSalario
 										folhaId={folha.id}
 										nome={folha.nome}
 										conta={folha.conta}
-										valor={folha.salarioAPagarDetalhes.valor}
-										data={folha.salarioAPagarDetalhes.data}
+										valor={folha.salarioMesAtualDetalhes.valor}
+										data={folha.salarioMesAtualDetalhes.data}
+										porMesAtual
+										jaPago={folha.salarioMesAtualDetalhes.pago}
 									/>
 								</div>
 							)}
+							{folha.salarioAPagar != null &&
+								folha.salarioAPagarDetalhes &&
+								!isSalarioPagarNoMesAtual(folha.salarioAPagarDetalhes) && (
+									<div className='flex items-center gap-2'>
+										<p className='text-sm font-medium text-amber-600'>
+											A pagar: {formatarMoeda(folha.salarioAPagar)}
+										</p>
+										<DialogEditarSalario
+											folhaId={folha.id}
+											nome={folha.nome}
+											conta={folha.conta}
+											valor={folha.salarioAPagarDetalhes.valor}
+											data={folha.salarioAPagarDetalhes.data}
+										/>
+									</div>
+								)}
 						</CardHeader>
 						<CardContent className='space-y-3'>
 							{folha.salariosUltimos3Meses.length > 0 ? (

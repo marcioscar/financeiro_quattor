@@ -21,6 +21,10 @@ type Props = {
 	conta: string;
 	valor: number;
 	data: Date;
+	/** Quando true, edita o salário do mês atual (pago ou não) em vez do primeiro não pago */
+	porMesAtual?: boolean;
+	/** Indica se o salário já está pago (usado quando porMesAtual para preservar estado) */
+	jaPago?: boolean;
 };
 
 function formatarDataParaInput(date: Date): string {
@@ -33,20 +37,22 @@ export function DialogEditarSalario({
 	conta,
 	valor,
 	data,
+	porMesAtual = false,
+	jaPago = false,
 }: Props) {
 	const [open, setOpen] = useState(false);
 	const [valorStr, setValorStr] = useState(() =>
 		valor.toFixed(2).replace(".", ","),
 	);
 	const [dataStr, setDataStr] = useState(() => formatarDataParaInput(data));
-	const [marcarComoPago, setMarcarComoPago] = useState(false);
+	const [marcarComoPago, setMarcarComoPago] = useState(jaPago);
 	const fetcher = useFetcher();
 
 	const resetForm = useCallback(() => {
 		setValorStr(valor.toFixed(2).replace(".", ","));
 		setDataStr(formatarDataParaInput(data));
-		setMarcarComoPago(false);
-	}, [valor, data]);
+		setMarcarComoPago(jaPago);
+	}, [valor, data, jaPago]);
 
 	useEffect(() => {
 		if (open) resetForm();
@@ -59,7 +65,7 @@ export function DialogEditarSalario({
 
 		fetcher.submit(
 			{
-				intent: "editar",
+				intent: porMesAtual ? "editarSalarioMesAtual" : "editar",
 				folhaId,
 				valor: String(valorNum),
 				data: dataStr,
@@ -79,13 +85,24 @@ export function DialogEditarSalario({
 		<Dialog open={open} onOpenChange={(o) => (setOpen(o), !o && resetForm())}>
 			<DialogTrigger asChild>
 				<Button size='xs' variant='ghost' className='h-7 px-2'>
-					<HandCoins className='size-3.5' />
-					Pagar
+					{porMesAtual ? (
+						<>
+							<Pencil className='size-3.5' />
+							Editar
+						</>
+					) : (
+						<>
+							<HandCoins className='size-3.5' />
+							Pagar
+						</>
+					)}
 				</Button>
 			</DialogTrigger>
 			<DialogContent>
 				<DialogHeader>
-					<DialogTitle>Pagar salário</DialogTitle>
+					<DialogTitle>
+						{porMesAtual ? "Editar salário do mês" : "Pagar salário"}
+					</DialogTitle>
 					<DialogDescription className='text-sm font-light text-orange-500'>
 						{nome}.
 					</DialogDescription>

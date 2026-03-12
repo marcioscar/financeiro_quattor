@@ -110,9 +110,37 @@ export async function criarSalarioAPagar(
 	});
 }
 
-function getMesAtual(): { mes: number; ano: number } {
+export function getMesAtual(): { mes: number; ano: number } {
 	const hoje = new Date();
 	return { mes: hoje.getMonth(), ano: hoje.getFullYear() };
+}
+
+type SalarioMesAtualDetalhes = {
+	valor: number;
+	data: Date;
+	pago: boolean;
+} | null;
+
+function obterSalarioMesAtualDetalhes(
+	salarios: {
+		valor?: number | null;
+		pago?: boolean | null;
+		data?: Date | null;
+		[key: string]: unknown;
+	}[]
+): SalarioMesAtualDetalhes {
+	const { mes, ano } = getMesAtual();
+	const doMesAtual = (salarios ?? []).find((s) => {
+		if (!s.data || s.valor == null) return false;
+		const d = new Date(s.data);
+		return d.getMonth() === mes && d.getFullYear() === ano;
+	});
+	if (!doMesAtual?.valor || !doMesAtual?.data) return null;
+	return {
+		valor: doMesAtual.valor,
+		data: new Date(doMesAtual.data),
+		pago: doMesAtual.pago === true,
+	};
 }
 
 function somaSalariosPagosMesAtual(
@@ -144,6 +172,7 @@ export async function getFolhasComSalariosUltimos3Meses() {
 			salariosUltimos3Meses: filtrarSalariosUltimos3Meses(salarios),
 			salarioAPagar: obterSalarioAPagar(salarios),
 			salarioAPagarDetalhes: obterSalarioAPagarDetalhes(salarios),
+			salarioMesAtualDetalhes: obterSalarioMesAtualDetalhes(salarios),
 		};
 	});
 
@@ -163,6 +192,39 @@ export async function atualizarSalarioAPagar(
 	const salarios = [...(folha.salarios ?? [])];
 	const idx = salarios.findIndex((s) => s.pago === false);
 	if (idx < 0) throw new Error("Nenhum salário a pagar encontrado");
+
+	salarios[idx] = {
+		...salarios[idx],
+		valor,
+		data,
+		pago: marcarComoPago,
+	};
+
+	await db.folha.update({
+		where: { id: folhaId },
+		data: { salarios: { set: salarios } },
+	});
+}
+
+export async function atualizarSalarioPorMesAno(
+	folhaId: string,
+	mes: number,
+	ano: number,
+	valor: number,
+	data: Date,
+	marcarComoPago = false
+) {
+	const folha = await db.folha.findUniqueOrThrow({
+		where: { id: folhaId },
+	});
+
+	const salarios = [...(folha.salarios ?? [])];
+	const idx = salarios.findIndex((s) => {
+		if (!s.data) return false;
+		const d = new Date(s.data);
+		return d.getMonth() === mes && d.getFullYear() === ano;
+	});
+	if (idx < 0) throw new Error("Nenhum salário do mês encontrado");
 
 	salarios[idx] = {
 		...salarios[idx],
