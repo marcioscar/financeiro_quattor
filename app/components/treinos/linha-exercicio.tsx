@@ -11,12 +11,6 @@ import {
 } from "~/components/ui/combobox";
 import { Field, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
-import { MAPEAMENTO_VIDEOS } from "~/constants/treinos";
-
-const VIDEO_ITEMS = Object.entries(MAPEAMENTO_VIDEOS).map(([label, value]) => ({
-	value,
-	label,
-}));
 
 export type ExercicioForm = {
 	exercicio: string;
@@ -27,19 +21,20 @@ export type ExercicioForm = {
 
 export function LinhaExercicio({
 	exercicio,
+	videoItems,
 	onChange,
 	onRemove,
 	disabled,
 }: {
 	exercicio: ExercicioForm;
+	videoItems: Array<{ value: string; label: string }>;
 	onChange: (ex: ExercicioForm) => void;
 	onRemove: () => void;
 	disabled: boolean;
 }) {
 	const anchorVideoRef = useComboboxAnchor();
 	const videoLabel =
-		Object.entries(MAPEAMENTO_VIDEOS).find(([, v]) => v === exercicio.video)
-			?.[0] ?? "_Producao";
+		videoItems.find((item) => item.value === exercicio.video)?.label ?? "";
 	const videoValue = exercicio.video;
 
 	return (
@@ -91,7 +86,7 @@ export function LinhaExercicio({
 						onValueChange={(v) =>
 							v && onChange({ ...exercicio, video: v.value })
 						}
-						items={VIDEO_ITEMS}
+						items={videoItems}
 					>
 						<ComboboxInput placeholder="Buscar vídeo..." showClear />
 						<ComboboxContent anchor={anchorVideoRef}>

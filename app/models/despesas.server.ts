@@ -1,3 +1,4 @@
+import { limitesMesCivilUTC } from "~/lib/despesas-calendar";
 import { db } from "~/db.server";
 
 export async function createDespesa(data: {
@@ -51,8 +52,8 @@ export async function deleteDespesa(id: string) {
 
 export async function getDespesas() {
 	const anoAtual = new Date().getFullYear();
-	const inicioAno = new Date(anoAtual, 0, 1);
-	const fimAno = new Date(anoAtual, 11, 31, 23, 59, 59, 999);
+	const inicioAno = new Date(Date.UTC(anoAtual, 0, 1, 0, 0, 0, 0));
+	const fimAno = new Date(Date.UTC(anoAtual, 11, 31, 23, 59, 59, 999));
 
 	return db.despesas.findMany({
 		where: {
@@ -66,17 +67,16 @@ export async function getDespesas() {
 	});
 }
 
-/** Soma de todas as despesas do mês (fixas + variáveis) */
+/** Soma de todas as despesas do mês (fixas + variáveis). `mes` 1–12. */
 export async function getDespesasTotaisDoMes(
-	dataRef: Date = new Date(),
+	ano: number,
+	mes: number,
 ): Promise<number> {
-	const ano = dataRef.getFullYear();
-	const mes = dataRef.getMonth();
-	const inicioMes = new Date(ano, mes, 1);
-	const fimMes = new Date(ano, mes + 1, 0, 23, 59, 59, 999);
+	const { inicio: inicioMes, fim: fimMes } = limitesMesCivilUTC(ano, mes);
 
 	const despesas = await db.despesas.findMany({
 		where: {
+			pago: true,
 			data: { gte: inicioMes, lte: fimMes },
 		},
 		select: { valor: true },
@@ -85,17 +85,16 @@ export async function getDespesasTotaisDoMes(
 	return despesas.reduce((acc, d) => acc + (d.valor ?? 0), 0);
 }
 
-/** Despesas agrupadas por conta (categoria) no mês — para gráfico de composição */
+/** Despesas agrupadas por conta (categoria) no mês — para gráfico de composição. `mes` 1–12. */
 export async function getDespesasPorCategoriaDoMes(
-	dataRef: Date = new Date(),
+	ano: number,
+	mes: number,
 ): Promise<{ conta: string; valor: number }[]> {
-	const ano = dataRef.getFullYear();
-	const mes = dataRef.getMonth();
-	const inicioMes = new Date(ano, mes, 1);
-	const fimMes = new Date(ano, mes + 1, 0, 23, 59, 59, 999);
+	const { inicio: inicioMes, fim: fimMes } = limitesMesCivilUTC(ano, mes);
 
 	const despesas = await db.despesas.findMany({
 		where: {
+			pago: true,
 			data: { gte: inicioMes, lte: fimMes },
 		},
 		select: { conta: true, valor: true },
@@ -113,18 +112,17 @@ export async function getDespesasPorCategoriaDoMes(
 		.sort((a, b) => b.valor - a.valor);
 }
 
-/** Soma das despesas fixas do mês atual (para cálculo de ponto de equilíbrio) */
+/** Soma das despesas fixas do mês (ponto de equilíbrio). `mes` 1–12. */
 export async function getDespesasFixasDoMes(
-	dataRef: Date = new Date(),
+	ano: number,
+	mes: number,
 ): Promise<number> {
-	const ano = dataRef.getFullYear();
-	const mes = dataRef.getMonth();
-	const inicioMes = new Date(ano, mes, 1);
-	const fimMes = new Date(ano, mes + 1, 0, 23, 59, 59, 999);
+	const { inicio: inicioMes, fim: fimMes } = limitesMesCivilUTC(ano, mes);
 
 	const despesas = await db.despesas.findMany({
 		where: {
 			tipo: "fixa",
+			pago: true,
 			data: { gte: inicioMes, lte: fimMes },
 		},
 		select: { valor: true },
@@ -135,8 +133,8 @@ export async function getDespesasFixasDoMes(
 
 export async function getContasAPagar() {
 	const anoAtual = new Date().getFullYear();
-	const inicioAno = new Date(anoAtual, 0, 1);
-	const fimAno = new Date(anoAtual, 11, 31, 23, 59, 59, 999);
+	const inicioAno = new Date(Date.UTC(anoAtual, 0, 1, 0, 0, 0, 0));
+	const fimAno = new Date(Date.UTC(anoAtual, 11, 31, 23, 59, 59, 999));
 
 	return db.despesas.findMany({
 		where: {
@@ -146,6 +144,6 @@ export async function getContasAPagar() {
 				lte: fimAno,
 			},
 		},
-		orderBy: { data: "desc" },
+		orderBy: { data: "asc" },
 	});
 }

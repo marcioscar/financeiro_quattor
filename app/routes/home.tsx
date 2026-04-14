@@ -165,7 +165,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 			const dataRef = new Date(a, m - 1, 1);
 			const [receitas, despesas] = await Promise.all([
 				getFaturamentoDoMes(dataRef),
-				getDespesasTotaisDoMes(dataRef),
+				getDespesasTotaisDoMes(a, m),
 			]);
 			return { mesLabel, receitas, despesas };
 		}),
@@ -184,10 +184,10 @@ export async function loader({ request }: Route.LoaderArgs) {
 		getAlunosAtivos(new Date()),
 		getRecebimentosDoMesAtual(),
 		getCancelamentosNoMes(dataReferencia),
-		getDespesasFixasDoMes(dataReferencia),
+		getDespesasFixasDoMes(ano, mes),
 		getFaturamentoDoMes(dataReferencia),
-		getDespesasTotaisDoMes(dataReferencia),
-		getDespesasPorCategoriaDoMes(dataReferencia),
+		getDespesasTotaisDoMes(ano, mes),
+		getDespesasPorCategoriaDoMes(ano, mes),
 	]);
 
 	return {

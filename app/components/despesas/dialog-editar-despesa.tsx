@@ -10,7 +10,8 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "~/components/ui/dialog";
-import { Field, FieldLabel } from "~/components/ui/field";
+import { Field, FieldError, FieldLabel } from "~/components/ui/field";
+import type { FormActionWithUploadErrors } from "~/lib/upload-errors";
 import { Input } from "~/components/ui/input";
 import {
 	Select,
@@ -52,7 +53,7 @@ export function DialogEditarDespesa({
 	const [data, setData] = useState(formatarDataParaInput(despesa.data));
 	const [tipo, setTipo] = useState(despesa.tipo ?? "");
 	const [pago, setPago] = useState(despesa.pago ?? false);
-	const fetcher = useFetcher<{ error?: string; success?: boolean }>();
+	const fetcher = useFetcher<FormActionWithUploadErrors>();
 	const submittedRef = useRef(false);
 	const boletoInputRef = useRef<HTMLInputElement>(null);
 	const comprovanteInputRef = useRef<HTMLInputElement>(null);
@@ -141,6 +142,11 @@ export function DialogEditarDespesa({
 	}, [fetcher.state, fetcher.data, onClose]);
 
 	const busy = fetcher.state !== "idle";
+	const formError =
+		fetcher.data?.errors?.form ?? fetcher.data?.error;
+	const errBoleto = fetcher.data?.errors?.boleto;
+	const errComprovante = fetcher.data?.errors?.comprovante;
+
 	const isValid =
 		conta.trim() &&
 		descricao.trim() &&
@@ -264,7 +270,7 @@ export function DialogEditarDespesa({
 					)}
 					{variant === "contas_a_pagar" ? (
 						<>
-							<Field>
+							<Field data-invalid={!!errBoleto}>
 								<FieldLabel htmlFor='editar-boleto'>Boleto</FieldLabel>
 								<Input
 									ref={boletoInputRef}
@@ -278,8 +284,9 @@ export function DialogEditarDespesa({
 								<p className='mt-1 text-xs text-muted-foreground'>
 									Deixe em branco para manter o atual
 								</p>
+								<FieldError>{errBoleto}</FieldError>
 							</Field>
-							<Field>
+							<Field data-invalid={!!errComprovante}>
 								<FieldLabel htmlFor='editar-comprovante'>
 									Comprovante de pagamento
 								</FieldLabel>
@@ -296,10 +303,11 @@ export function DialogEditarDespesa({
 									Envie o comprovante ao marcar como pago. Deixe em branco para
 									manter o atual.
 								</p>
+								<FieldError>{errComprovante}</FieldError>
 							</Field>
 						</>
 					) : (
-						<Field>
+						<Field data-invalid={!!errComprovante}>
 							<FieldLabel htmlFor='editar-comprovante'>
 								Comprovante de pagamento
 							</FieldLabel>
@@ -315,11 +323,12 @@ export function DialogEditarDespesa({
 							<p className='mt-1 text-xs text-muted-foreground'>
 								Deixe em branco para manter o atual
 							</p>
+							<FieldError>{errComprovante}</FieldError>
 						</Field>
 					)}
 
-					{fetcher.data?.error && (
-						<p className='text-sm text-destructive'>{fetcher.data.error}</p>
+					{formError && (
+						<p className='text-sm text-destructive'>{formError}</p>
 					)}
 
 					<DialogFooter className='flex-col gap-2 sm:flex-row'>

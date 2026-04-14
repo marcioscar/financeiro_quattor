@@ -8,6 +8,8 @@ import {
 	deleteDespesa,
 } from "~/models/despesas.server";
 import { uploadReciboAndGetUrl } from "~/models/pocketbase.server";
+import { jsonFieldUploadError, jsonFormError } from "~/lib/upload-errors";
+import { despesaCaiNoMesCivil } from "~/lib/despesas-calendar";
 import { DataTable } from "~/components/desp-table";
 import { getColumns } from "~/components/columns-desp";
 import { DialogNovaDespesa } from "~/components/despesas/dialog-nova-despesa";
@@ -82,11 +84,7 @@ export async function action({ request }: Route.ActionArgs) {
 					const nomeComData = `${dataPrefix}-${file.name}`;
 					reciboPath = await uploadReciboAndGetUrl(buffer, nomeComData);
 				} catch (err) {
-					const msg =
-						err instanceof Error
-							? err.message
-							: "Falha ao fazer upload do comprovante";
-					return { error: msg };
+					return jsonFieldUploadError("comprovante", err);
 				}
 			}
 
@@ -101,7 +99,9 @@ export async function action({ request }: Route.ActionArgs) {
 				});
 				return { success: true };
 			} catch {
-				return { error: "Erro ao atualizar despesa" };
+				return jsonFormError(
+					"Não foi possível atualizar a despesa. Tente novamente.",
+				);
 			}
 		}
 
@@ -146,9 +146,7 @@ export async function action({ request }: Route.ActionArgs) {
 				const nomeComData = `${dataPrefix}-${file.name}`;
 				reciboPath = await uploadReciboAndGetUrl(buffer, nomeComData);
 			} catch (err) {
-				const msg =
-					err instanceof Error ? err.message : "Falha ao fazer upload do comprovante";
-				return { error: msg };
+				return jsonFieldUploadError("comprovante", err);
 			}
 		}
 
@@ -164,7 +162,9 @@ export async function action({ request }: Route.ActionArgs) {
 			});
 			return { success: true };
 		} catch {
-			return { error: "Erro ao cadastrar despesa" };
+			return jsonFormError(
+				"Não foi possível cadastrar a despesa. Tente novamente.",
+			);
 		}
 	}
 
@@ -185,15 +185,11 @@ export default function Despesas() {
 
 	const totalDespesas = useMemo(() => {
 		const hoje = new Date();
-		const mesAtual = hoje.getMonth();
-		const anoAtual = hoje.getFullYear();
+		const mesRef = hoje.getMonth() + 1;
+		const anoRef = hoje.getFullYear();
 		return despesas.reduce((acc, d) => {
-			if (!d.data) return acc;
-			const data = new Date(d.data);
-			if (data.getMonth() === mesAtual && data.getFullYear() === anoAtual) {
-				return acc + (d.valor ?? 0);
-			}
-			return acc;
+			if (!despesaCaiNoMesCivil(d.data, anoRef, mesRef)) return acc;
+			return acc + (d.valor ?? 0);
 		}, 0);
 	}, [despesas]);
 

@@ -9,7 +9,8 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "~/components/ui/dialog";
-import { Field, FieldLabel } from "~/components/ui/field";
+import { Field, FieldError, FieldLabel } from "~/components/ui/field";
+import type { FormActionWithUploadErrors } from "~/lib/upload-errors";
 import { Input } from "~/components/ui/input";
 import type { Cancelamento } from "~/components/cancelamentos/columns-cancel";
 
@@ -37,7 +38,7 @@ export function DialogEditarCancelamento({
 	onClose,
 }: Props) {
 	const [cancelado, setCancelado] = useState(cancelamento.cancelado ?? false);
-	const fetcher = useFetcher<{ error?: string; success?: boolean }>();
+	const fetcher = useFetcher<FormActionWithUploadErrors>();
 	const submittedRef = useRef(false);
 	const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -84,6 +85,9 @@ export function DialogEditarCancelamento({
 	}, [fetcher.state, fetcher.data, onClose]);
 
 	const busy = fetcher.state !== "idle";
+	const formError =
+		fetcher.data?.errors?.form ?? fetcher.data?.error;
+	const comprovanteError = fetcher.data?.errors?.comprovante;
 
 	if (!open) return null;
 
@@ -149,7 +153,7 @@ export function DialogEditarCancelamento({
 						</div>
 					</Field>
 
-					<Field>
+					<Field data-invalid={!!comprovanteError}>
 						<FieldLabel htmlFor="comprovante-cancelamento">
 							Comprovante de cancelamento
 						</FieldLabel>
@@ -165,6 +169,7 @@ export function DialogEditarCancelamento({
 						<p className="mt-1 text-xs text-muted-foreground">
 							Deixe em branco para manter o atual
 						</p>
+						<FieldError>{comprovanteError}</FieldError>
 						{cancelamento.recibo && (
 							<a
 								href={
@@ -181,10 +186,8 @@ export function DialogEditarCancelamento({
 						)}
 					</Field>
 
-					{fetcher.data?.error && (
-						<p className="text-sm text-destructive">
-							{fetcher.data.error}
-						</p>
+					{formError && (
+						<p className="text-sm text-destructive">{formError}</p>
 					)}
 
 					<DialogFooter>

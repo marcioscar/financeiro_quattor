@@ -4,6 +4,7 @@ import { Checkbox } from "~/components/ui/checkbox";
 import type { Route } from "./+types/cancelamentos";
 import { getCancelamentos, updateCancelamento } from "~/models/cancelamentos.server";
 import { uploadReciboAndGetUrl } from "~/models/pocketbase.server";
+import { jsonFieldUploadError, jsonFormError } from "~/lib/upload-errors";
 import { DataTable } from "~/components/desp-table";
 import { getColumns } from "~/components/cancelamentos/columns-cancel";
 import { DialogEditarCancelamento } from "~/components/cancelamentos/dialog-editar-cancelamento";
@@ -39,11 +40,7 @@ export async function action({ request }: Route.ActionArgs) {
 				const nomeComData = `cancelamento-${dataPrefix}-${file.name}`;
 				recibo = await uploadReciboAndGetUrl(buffer, nomeComData);
 			} catch (err) {
-				const msg =
-					err instanceof Error
-						? err.message
-						: "Falha ao fazer upload do comprovante";
-				return { error: msg };
+				return jsonFieldUploadError("comprovante", err);
 			}
 		}
 
@@ -54,7 +51,9 @@ export async function action({ request }: Route.ActionArgs) {
 			});
 			return { success: true };
 		} catch {
-			return { error: "Erro ao atualizar cancelamento" };
+			return jsonFormError(
+				"Não foi possível atualizar o cancelamento. Tente novamente.",
+			);
 		}
 	}
 

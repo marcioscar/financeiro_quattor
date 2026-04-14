@@ -42,7 +42,11 @@ const GRUPO_ITEMS = GRUPOS.map((g) => ({ value: g, label: g }));
 
 export async function loader() {
 	const bancoTreinos = await getBancoTreinos();
-	return { bancoTreinos };
+	const [videoItems, defaultVideo] = await Promise.all([
+		getTreinosVideoItems(),
+		getTreinosDefaultVideo(),
+	]);
+	return { bancoTreinos, videoItems, defaultVideo };
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -81,12 +85,13 @@ export async function action({ request }: Route.ActionArgs) {
 			return { error: "Adicione pelo menos um exercício" };
 		}
 
+		const defaultVideo = await getTreinosDefaultVideo();
 		const exerciciosValidados = exercicios.map((ex) => {
 			const nome = String(ex.exercicio ?? ex.nome ?? "").trim();
 			return {
 				exercicio: toTitleCase(nome),
 				observacao: String(ex.observacao ?? ex.obs ?? "").trim(),
-				video: String(ex.video ?? "producao.gif").trim(),
+				video: String(ex.video ?? defaultVideo).trim(),
 				repeticoes: String(ex.repeticoes ?? ex.Repeticoes ?? "").trim(),
 			};
 		});
@@ -148,12 +153,13 @@ export async function action({ request }: Route.ActionArgs) {
 			return { error: "Adicione pelo menos um exercício" };
 		}
 
+		const defaultVideo = await getTreinosDefaultVideo();
 		const exerciciosValidados = exercicios.map((ex) => {
 			const nome = String(ex.exercicio ?? ex.nome ?? "").trim();
 			return {
 				exercicio: toTitleCase(nome),
 				observacao: String(ex.observacao ?? ex.obs ?? "").trim(),
-				video: String(ex.video ?? "producao.gif").trim(),
+				video: String(ex.video ?? defaultVideo).trim(),
 				repeticoes: String(ex.repeticoes ?? ex.Repeticoes ?? "").trim(),
 			};
 		});
@@ -237,16 +243,20 @@ import {
 	LinhaExercicio,
 	type ExercicioForm,
 } from "~/components/treinos/linha-exercicio";
+import {
+	getTreinosDefaultVideo,
+	getTreinosVideoItems,
+} from "~/lib/treinos-videos.server";
 
 const exercicioInicial: ExercicioForm = {
 	exercicio: "",
 	repeticoes: "",
 	observacao: "",
-	video: "producao.gif",
+	video: "",
 };
 
 export default function Treinos() {
-	const { bancoTreinos } = useLoaderData<typeof loader>();
+	const { bancoTreinos, videoItems, defaultVideo } = useLoaderData<typeof loader>();
 	const fetcher = useFetcher<{
 		error?: string;
 		success?: boolean;
@@ -266,7 +276,7 @@ export default function Treinos() {
 		null,
 	);
 	const [exercicios, setExercicios] = useState<ExercicioForm[]>([
-		{ ...exercicioInicial },
+		{ ...exercicioInicial, video: defaultVideo },
 	]);
 	const [filtroCiclo, setFiltroCiclo] = useState<string>("todos");
 	const [filtroTreino, setFiltroTreino] = useState<string>("todos");
@@ -289,19 +299,22 @@ export default function Treinos() {
 	}, [bancoTreinos, filtroCiclo, filtroTreino]);
 
 	const resetExercicios = useCallback(() => {
-		setExercicios([{ ...exercicioInicial }]);
-	}, []);
+		setExercicios([{ ...exercicioInicial, video: defaultVideo }]);
+	}, [defaultVideo]);
 
 	const resetForm = useCallback(() => {
 		setCiclo("");
 		setTreino("");
 		setGrupo(null);
-		setExercicios([{ ...exercicioInicial }]);
-	}, []);
+		setExercicios([{ ...exercicioInicial, video: defaultVideo }]);
+	}, [defaultVideo]);
 
 	const addExercicio = useCallback(() => {
-		setExercicios((prev) => [...prev, { ...exercicioInicial }]);
-	}, []);
+		setExercicios((prev) => [
+			...prev,
+			{ ...exercicioInicial, video: defaultVideo },
+		]);
+	}, [defaultVideo]);
 
 	const updateExercicio = useCallback((index: number, ex: ExercicioForm) => {
 		setExercicios((prev) => {
@@ -447,6 +460,7 @@ export default function Treinos() {
 									<LinhaExercicio
 										key={i}
 										exercicio={ex}
+										videoItems={videoItems}
 										onChange={(e) => updateExercicio(i, e)}
 										onRemove={() => removeExercicio(i)}
 										disabled={busy}
@@ -574,6 +588,8 @@ export default function Treinos() {
 			{editingTreino && (
 				<DialogEditarTreino
 					treino={editingTreino}
+					videoItems={videoItems}
+					defaultVideo={defaultVideo}
 					open={!!editingTreino}
 					onClose={() => setEditingTreino(null)}
 				/>

@@ -19,6 +19,7 @@ FROM node:20-alpine
 ENV NODE_ENV=production
 ENV PORT=3001
 COPY ./package.json package-lock.json /app/
+COPY ./public /app/public
 COPY ./app/dados /app/app/dados
 COPY --from=production-dependencies-env /app/node_modules /app/node_modules
 COPY --from=build-env /app/build /app/build

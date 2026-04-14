@@ -10,7 +10,8 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from "~/components/ui/dialog";
-import { Field, FieldLabel } from "~/components/ui/field";
+import { Field, FieldError, FieldLabel } from "~/components/ui/field";
+import type { FormActionWithUploadErrors } from "~/lib/upload-errors";
 import { Input } from "~/components/ui/input";
 import {
 	Select,
@@ -33,7 +34,7 @@ export function DialogNovaDespesa({ variant = "despesas" }: Props) {
 	const [valor, setValor] = useState("");
 	const [data, setData] = useState(() => new Date().toISOString().slice(0, 10));
 	const [tipo, setTipo] = useState("");
-	const fetcher = useFetcher<{ error?: string; success?: boolean }>();
+	const fetcher = useFetcher<FormActionWithUploadErrors>();
 	const submittedRef = useRef(false);
 	const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -93,6 +94,15 @@ export function DialogNovaDespesa({ variant = "despesas" }: Props) {
 	}, [fetcher.state, fetcher.data, resetForm]);
 
 	const busy = fetcher.state !== "idle";
+	const fileFieldName =
+		variant === "contas_a_pagar" ? "boleto" : "comprovante";
+	const fileFieldError =
+		fileFieldName === "boleto"
+			? fetcher.data?.errors?.boleto
+			: fetcher.data?.errors?.comprovante;
+	const formError =
+		fetcher.data?.errors?.form ?? fetcher.data?.error;
+
 	const isValid =
 		conta.trim() &&
 		descricao.trim() &&
@@ -195,7 +205,7 @@ export function DialogNovaDespesa({ variant = "despesas" }: Props) {
 							</SelectContent>
 						</Select>
 					</Field>
-					<Field>
+					<Field data-invalid={!!fileFieldError}>
 						<FieldLabel htmlFor='comprovante'>
 							{variant === "contas_a_pagar"
 								? "Boleto"
@@ -213,17 +223,12 @@ export function DialogNovaDespesa({ variant = "despesas" }: Props) {
 						<p className='mt-1 text-xs text-muted-foreground'>
 							PDF ou imagem (opcional)
 						</p>
+						<FieldError>{fileFieldError}</FieldError>
 					</Field>
 
-					{fetcher.data?.error && (
+					{formError && (
 						<div className='space-y-1'>
-							<p className='text-sm text-destructive'>{fetcher.data.error}</p>
-							{fetcher.data.error.toLowerCase().includes("upload") && (
-								<p className='text-xs text-muted-foreground'>
-									Remova o comprovante e tente salvar sem ele, ou verifique
-									POCKETBASE_* no .env.
-								</p>
-							)}
+							<p className='text-sm text-destructive'>{formError}</p>
 						</div>
 					)}
 					<DialogFooter>

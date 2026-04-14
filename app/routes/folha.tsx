@@ -62,6 +62,7 @@ import {
 	ChartTooltip,
 	ChartTooltipContent,
 } from "~/components/ui/chart";
+import { cn } from "~/lib/utils";
 
 const TODOS = "Todos";
 
@@ -322,6 +323,18 @@ function isSalarioPagarNoMesAtual(
 	);
 }
 
+function classeFundoCardFolha(folha: {
+	salarioMesAtualDetalhes: { pago: boolean } | null | undefined;
+	salarioAPagarDetalhes: { data: Date } | null | undefined;
+}): string {
+	if (folha.salarioMesAtualDetalhes?.pago) return "bg-olive-300";
+	const temSalarioNoMesAtual =
+		folha.salarioMesAtualDetalhes != null ||
+		isSalarioPagarNoMesAtual(folha.salarioAPagarDetalhes);
+	if (temSalarioNoMesAtual) return "bg-white";
+	return "bg-orange-100";
+}
+
 export default function Folha() {
 	const { folhas, totalSalariosPagosMesAtual } = useLoaderData<typeof loader>();
 	const [filtroNome, setFiltroNome] = useState<string | null>();
@@ -547,7 +560,7 @@ export default function Folha() {
 				{folhasFiltradas.map((folha) => (
 					<Card
 						key={folha.id}
-						className={`overflow-hidden ${folha.salarioMesAtualDetalhes?.pago ? "bg-stone-50" : "bg-orange-100"}`}>
+						className={cn("overflow-hidden", classeFundoCardFolha(folha))}>
 						<CardHeader className='pb-2'>
 							<CardTitle className='text-base'>{folha.nome}</CardTitle>
 							<CardAction>

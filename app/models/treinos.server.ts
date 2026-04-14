@@ -33,7 +33,7 @@ function converterParaExercicioTreinos(ex: ExercicioBancoTreino): ExercicioTrein
 		nome: toTitleCase(nome),
 		Repeticoes: ex.repeticoes ?? "",
 		obs: ex.observacao ?? "",
-		video: ex.video ?? "producao.gif",
+		video: ex.video ?? "_producao.gif",
 		carga: "carga",
 	};
 }

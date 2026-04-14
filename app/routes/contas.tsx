@@ -8,6 +8,7 @@ import {
 	deleteDespesa,
 } from "~/models/despesas.server";
 import { uploadReciboAndGetUrl } from "~/models/pocketbase.server";
+import { jsonFieldUploadError, jsonFormError } from "~/lib/upload-errors";
 import { DataTable } from "~/components/desp-table";
 import { getColumns } from "~/components/columns-desp";
 import { DialogNovaDespesa } from "~/components/despesas/dialog-nova-despesa";
@@ -83,11 +84,7 @@ export async function action({ request }: Route.ActionArgs) {
 				const nomeComData = `${dataPrefix}-boleto-${boletoFile.name}`;
 				boletoPath = await uploadReciboAndGetUrl(buffer, nomeComData);
 			} catch (err) {
-				const msg =
-					err instanceof Error
-						? err.message
-						: "Falha ao fazer upload do boleto";
-				return { error: msg };
+				return jsonFieldUploadError("boleto", err);
 			}
 		}
 
@@ -100,11 +97,7 @@ export async function action({ request }: Route.ActionArgs) {
 				const nomeComData = `${dataPrefix}-comprovante-${comprovanteFile.name}`;
 				reciboPath = await uploadReciboAndGetUrl(buffer, nomeComData);
 			} catch (err) {
-				const msg =
-					err instanceof Error
-						? err.message
-						: "Falha ao fazer upload do comprovante";
-				return { error: msg };
+				return jsonFieldUploadError("comprovante", err);
 			}
 		}
 
@@ -123,7 +116,9 @@ export async function action({ request }: Route.ActionArgs) {
 			});
 			return { success: true };
 		} catch {
-			return { error: "Erro ao atualizar conta" };
+			return jsonFormError(
+				"Não foi possível atualizar a conta. Tente novamente.",
+			);
 		}
 	}
 
@@ -168,11 +163,7 @@ export async function action({ request }: Route.ActionArgs) {
 				const nomeComData = `${dataPrefix}-${file.name}`;
 				boletoPath = await uploadReciboAndGetUrl(buffer, nomeComData);
 			} catch (err) {
-				const msg =
-					err instanceof Error
-						? err.message
-						: "Falha ao fazer upload do boleto";
-				return { error: msg };
+				return jsonFieldUploadError("boleto", err);
 			}
 		}
 
@@ -188,7 +179,9 @@ export async function action({ request }: Route.ActionArgs) {
 			});
 			return { success: true };
 		} catch {
-			return { error: "Erro ao cadastrar conta" };
+			return jsonFormError(
+				"Não foi possível cadastrar a conta. Tente novamente.",
+			);
 		}
 	}
 

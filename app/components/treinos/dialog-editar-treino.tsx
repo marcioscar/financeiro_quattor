@@ -20,7 +20,7 @@ const exercicioInicial: ExercicioForm = {
 	exercicio: "",
 	repeticoes: "",
 	observacao: "",
-	video: "producao.gif",
+	video: "",
 };
 
 function toExercicioForm(ex: Record<string, unknown> | null | undefined): ExercicioForm {
@@ -29,32 +29,63 @@ function toExercicioForm(ex: Record<string, unknown> | null | undefined): Exerci
 		exercicio: (ex.exercicio ?? ex.nome ?? "") as string,
 		repeticoes: (ex.repeticoes ?? ex.Repeticoes ?? "") as string,
 		observacao: (ex.observacao ?? ex.obs ?? "") as string,
-		video: (ex.video ?? "producao.gif") as string,
+		video: (ex.video ?? "") as string,
 	};
+}
+
+function resolveVideoValue(
+	video: string,
+	videoItems: Array<{ value: string; label: string }>,
+	defaultVideo: string,
+): string {
+	const normalizedVideo = video.trim();
+	if (normalizedVideo && videoItems.some((item) => item.value === normalizedVideo)) {
+		return normalizedVideo;
+	}
+	return defaultVideo;
 }
 
 type Props = {
 	treino: BancoTreinoRow | null;
+	videoItems: Array<{ value: string; label: string }>;
+	defaultVideo: string;
 	open: boolean;
 	onClose: () => void;
 };
 
-export function DialogEditarTreino({ treino, open, onClose }: Props) {
+export function DialogEditarTreino({
+	treino,
+	videoItems,
+	defaultVideo,
+	open,
+	onClose,
+}: Props) {
 	const [exercicios, setExercicios] = useState<ExercicioForm[]>([]);
 	const fetcher = useFetcher<{ error?: string; success?: boolean }>();
 	const submittedRef = useRef(false);
 
 	useEffect(() => {
 		if (treino?.exercicios?.length) {
-			setExercicios(treino.exercicios.map(toExercicioForm));
+			setExercicios(
+				treino.exercicios.map((ex) => {
+					const exercicio = toExercicioForm(ex);
+					return {
+						...exercicio,
+						video: resolveVideoValue(exercicio.video, videoItems, defaultVideo),
+					};
+				}),
+			);
 		} else {
-			setExercicios([{ ...exercicioInicial }]);
+			setExercicios([{ ...exercicioInicial, video: defaultVideo }]);
 		}
-	}, [treino, open]);
+	}, [treino, open, defaultVideo, videoItems]);
 
 	const addExercicio = useCallback(() => {
-		setExercicios((prev) => [...prev, { ...exercicioInicial }]);
-	}, []);
+		setExercicios((prev) => [
+			...prev,
+			{ ...exercicioInicial, video: defaultVideo },
+		]);
+	}, [defaultVideo]);
 
 	const updateExercicio = useCallback((index: number, ex: ExercicioForm) => {
 		setExercicios((prev) => {
@@ -127,6 +158,7 @@ export function DialogEditarTreino({ treino, open, onClose }: Props) {
 								<LinhaExercicio
 									key={i}
 									exercicio={ex}
+									videoItems={videoItems}
 									onChange={(e) => updateExercicio(i, e)}
 									onRemove={() => removeExercicio(i)}
 									disabled={busy}
