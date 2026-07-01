@@ -30,6 +30,8 @@ export type ContratoMesGravado = {
 	totalRepasse: number;
 	gravadoEm: Date;
 	clientes: ClientePlanoEVO[];
+	/** Todos os clientes gravados no mês/ano/plano, sem filtro de professor — usado para montar a lista de professores do filtro. */
+	clientesCompletos: ClientePlanoEVO[];
 };
 
 type ItemContratoInput = {
@@ -73,6 +75,12 @@ function clienteParaItem(cliente: ClientePlanoEVO): ItemContratoInput {
 	};
 }
 
+function ordenarPorNome(clientes: ClientePlanoEVO[]): ClientePlanoEVO[] {
+	return [...clientes].sort((a, b) =>
+		a.nomeCliente.localeCompare(b.nomeCliente, "pt-BR"),
+	);
+}
+
 function itemParaCliente(item: ItemContratoGravado): ClientePlanoEVO {
 	return {
 		idCliente: item.id_cliente ?? 0,
@@ -104,7 +112,7 @@ export function professoresDosClientes(
 		.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
 }
 
-export async function buscarContratosMes(
+async function buscarRegistroContratos(
 	mes: number,
 	ano: number,
 	planoFiltro: FiltroPlanoId,
@@ -123,7 +131,7 @@ export async function buscarContratosMes(
 
 	if (!registro || registro.itens.length === 0) return null;
 
-	const clientes = registro.itens.map(itemParaCliente);
+	const clientes = ordenarPorNome(registro.itens.map(itemParaCliente));
 
 	return {
 		mes: registro.mes,
@@ -134,6 +142,96 @@ export async function buscarContratosMes(
 		totalRepasse: registro.total_repasse,
 		gravadoEm: registro.gravado_em,
 		clientes,
+		clientesCompletos: clientes,
+	};
+}
+
+/**
+ * Junta todos os registros gravados (um por professor) de um mês/ano/plano
+ * quando não existe um registro consolidado com professor_filtro "todos".
+ * Cada registro salvo com um professor específico contém um subconjunto
+ * disjunto de alunos, então basta concatenar os itens.
+ */
+async function buscarRegistroCombinadoPorProfessores(
+	mes: number,
+	ano: number,
+	planoFiltro: FiltroPlanoId,
+): Promise<ContratoMesGravado | null> {
+	const registros = await db.contratos.findMany({
+		where: { mes, ano, plano_filtro: planoFiltro },
+	});
+	if (registros.length === 0) return null;
+
+	const clientes = ordenarPorNome(
+		registros.flatMap((registro) => registro.itens.map(itemParaCliente)),
+	);
+	if (clientes.length === 0) return null;
+
+	const resumo = calcularResumoRepasse(clientes);
+	const gravadoEm = registros.reduce(
+		(maisRecente, registro) =>
+			registro.gravado_em > maisRecente ? registro.gravado_em : maisRecente,
+		registros[0].gravado_em,
+	);
+
+	return {
+		mes,
+		ano,
+		planoFiltro,
+		professorFiltro: "todos",
+		totalAlunos: resumo.totalAlunos,
+		totalRepasse: resumo.totalRepasse,
+		gravadoEm,
+		clientes,
+		clientesCompletos: clientes,
+	};
+}
+
+/**
+ * Busca contratos gravados no banco. Se não houver registro exato para o
+ * professor filtrado, reaproveita os demais registros salvos do mesmo
+ * mês/ano/plano (consolidado "todos" ou a soma dos registros por professor)
+ * em vez de consultar a EVO novamente.
+ */
+export async function buscarContratosMes(
+	mes: number,
+	ano: number,
+	planoFiltro: FiltroPlanoId,
+	professorFiltro: string,
+): Promise<ContratoMesGravado | null> {
+	const registro = await buscarRegistroContratos(
+		mes,
+		ano,
+		planoFiltro,
+		professorFiltro,
+	);
+	if (registro) return registro;
+
+	if (professorFiltro === "todos") {
+		return buscarRegistroCombinadoPorProfessores(mes, ano, planoFiltro);
+	}
+
+	const idProfessor = Number.parseInt(professorFiltro, 10);
+	if (!Number.isFinite(idProfessor)) return null;
+
+	const registroTodos =
+		(await buscarRegistroContratos(mes, ano, planoFiltro, "todos")) ??
+		(await buscarRegistroCombinadoPorProfessores(mes, ano, planoFiltro));
+	if (!registroTodos) return null;
+
+	const clientesFiltrados = registroTodos.clientes.filter(
+		(c) => c.idProfessor === idProfessor,
+	);
+	if (clientesFiltrados.length === 0) return null;
+
+	const resumo = calcularResumoRepasse(clientesFiltrados);
+
+	return {
+		...registroTodos,
+		professorFiltro,
+		clientes: clientesFiltrados,
+		totalAlunos: resumo.totalAlunos,
+		totalRepasse: resumo.totalRepasse,
 	};
 }
 

@@ -147,7 +147,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 				fonte: "banco" as const,
 				gravadoEm: salvo.gravadoEm.toISOString(),
 				clientes: salvo.clientes,
-				professores: professoresDosClientes(salvo.clientes),
+				professores: professoresDosClientes(salvo.clientesCompletos),
 				erro: null,
 			};
 		}
@@ -315,6 +315,14 @@ export default function Planos() {
 		[linhasEditaveis],
 	);
 
+	const linhasNovasIds = useMemo(
+		() =>
+			linhasEditaveis
+				.filter((linha) => linha.id.startsWith("manual-"))
+				.map((linha) => linha.id),
+		[linhasEditaveis],
+	);
+
 	const colunas = useMemo(
 		() =>
 			getColumnsPlanos({
@@ -395,8 +403,8 @@ export default function Planos() {
 	function adicionarLinha() {
 		const nomePlanoPadrao = filtroAtual?.label ?? "";
 		setLinhasEditaveis((atual) => [
-			...atual,
 			criarLinhaManual(nomePlanoPadrao),
+			...atual,
 		]);
 	}
 
@@ -667,6 +675,8 @@ export default function Planos() {
 						<DataTable<ClientePlanoRow, unknown>
 							columns={colunas}
 							data={linhasEditaveis}
+							autoResetPageIndex={false}
+							pinnedRowIds={linhasNovasIds}
 							filterColumn="nomeCliente"
 							filterPlaceholder="Filtrar por cliente..."
 							filterExtra={

@@ -34,6 +34,10 @@ interface DataTableProps<TData, TValue> {
 	filterPlaceholder?: string;
 	filterExtra?: React.ReactNode;
 	onRowClick?: (row: TData) => void;
+	/** Desative quando `data` for editada localmente a cada tecla (ex.: tabelas com inputs inline) para a paginação não voltar pra página 1 a cada alteração. */
+	autoResetPageIndex?: boolean;
+	/** IDs de linhas que devem ficar sempre fixas no topo, independente de ordenação/paginação (ex.: linhas recém-adicionadas ainda não salvas). */
+	pinnedRowIds?: string[];
 }
 
 export function DataTable<TData extends { id?: string }, TValue>({
@@ -46,6 +50,8 @@ export function DataTable<TData extends { id?: string }, TValue>({
 	filterPlaceholder = "Filtrar por fornecedor...",
 	filterExtra,
 	onRowClick,
+	autoResetPageIndex = true,
+	pinnedRowIds,
 }: DataTableProps<TData, TValue>) {
 	const [sorting, setSorting] = useState<SortingState>([]);
 	const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -55,6 +61,7 @@ export function DataTable<TData extends { id?: string }, TValue>({
 		data,
 		columns,
 		getRowId,
+		autoResetPageIndex,
 		initialState: { pagination: { pageSize: 12 } },
 		getCoreRowModel: getCoreRowModel(),
 		getPaginationRowModel: getPaginationRowModel(),
@@ -68,11 +75,13 @@ export function DataTable<TData extends { id?: string }, TValue>({
 			sorting,
 			columnFilters,
 			rowSelection,
+			rowPinning: { top: pinnedRowIds ?? [], bottom: [] },
 		},
 	});
 
 	const selectedRows = table.getFilteredSelectedRowModel().rows.map((r) => r.original);
 	const hasSelection = selectedRows.length > 0;
+	const linhas = [...table.getTopRows(), ...table.getCenterRows()];
 
 	return (
 		<div className="min-w-0 w-full max-w-full">
@@ -118,8 +127,8 @@ export function DataTable<TData extends { id?: string }, TValue>({
 						))}
 					</TableHeader>
 					<TableBody>
-						{table.getRowModel().rows?.length ? (
-							table.getRowModel().rows.map((row) => (
+						{linhas.length ? (
+							linhas.map((row) => (
 								<TableRow
 									key={row.id}
 									data-state={row.getIsSelected() && "selected"}
