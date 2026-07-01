@@ -43,11 +43,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
 		bolasSrc,
 		rotateCcwSrc,
 	);
+	const body = new Uint8Array(buffer);
 
 	const treinoNorm = treino.trim().replace(/\s+/g, "");
 	const filename = `treino_${treinoNorm}_${ciclo.trim().replace(/\s+/g, "_")}.pdf`;
 
-	return new Response(buffer, {
+	return new Response(body, {
 		headers: {
 			"Content-Type": "application/pdf",
 			"Content-Disposition": `attachment; filename="${filename}"`,

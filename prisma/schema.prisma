@@ -63,6 +63,7 @@ model cancelamentos {
     plano            String?
     motivo           String?
     data_solicitacao DateTime?
+    data_conclusao   DateTime?
     conclusao        String?
     valor_estornar   String?
     stone            String?
@@ -80,10 +81,10 @@ type Exercicio {
 }
 
 type ExercicioBancoTreino {
-    exercicio   String?
-    observacao  String?
-    video       String?
-    repeticoes  String?
+    exercicio  String?
+    observacao String?
+    video      String?
+    repeticoes String?
 }
 
 model treinos {
@@ -94,11 +95,51 @@ model treinos {
 }
 
 model banco_treino {
-    id         String               @id @default(auto()) @map("_id") @db.ObjectId
+    id         String                 @id @default(auto()) @map("_id") @db.ObjectId
     ciclo      String?
     treino     String?
     grupo      String?
     exercicios ExercicioBancoTreino[]
 
     @@map("banco_treinos")
+}
+
+model ponto {
+    id        String   @id @default(auto()) @map("_id") @db.ObjectId
+    nome      String
+    matricula Int
+    entrada   DateTime
+    saida     DateTime
+}
+
+type ItemContrato {
+    id_cliente     Int?
+    id_plano       Int?
+    nome_cliente   String?
+    nome_plano     String?
+    valor_total    Float?
+    mensalidade    Float?
+    repasse        Float?
+    data_inicio    String?
+    data_fim       String?
+    nome_professor String?
+    id_professor   Int?
+}
+
+model contratos {
+    id               String         @id @default(auto()) @map("_id") @db.ObjectId
+    mes              Int
+    ano              Int
+    plano_filtro     String
+    plano_label      String?
+    professor_filtro String
+    nome_professor   String?
+    total_alunos     Int
+    total_repasse    Float
+    gravado_em       DateTime       @default(now())
+    itens            ItemContrato[]
+
+    @@unique([mes, ano, plano_filtro, professor_filtro], name: "contrato_mes_plano_professor")
+    @@index([mes, ano])
+    @@map("contratos")
 }

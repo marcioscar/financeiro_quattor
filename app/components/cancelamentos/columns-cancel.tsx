@@ -11,6 +11,7 @@ export type Cancelamento = {
 	plano?: string | null;
 	motivo?: string | null;
 	data_solicitacao?: Date | null;
+	data_conclusao?: Date | null;
 	conclusao?: string | null;
 	valor_estornar?: string | null;
 	stone?: string | null;

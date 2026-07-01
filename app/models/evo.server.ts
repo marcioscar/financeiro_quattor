@@ -1,11 +1,16 @@
 /**
  * Integração com a API EVO (W12) para dados de membros/alunos.
- * Usa o endpoint /api/v2/management/activeclients.
- * A API retorna Excel (.xlsx) ou CSV.
+ * - activeclients: Excel/CSV com um contrato principal por cliente
+ * - membermembership (v3): JSON com um registro por contrato (filtro por plano/status)
  * Autenticação: Basic Auth (User = DNS da academia, Password = Secret Key)
  */
 
 import * as XLSX from "xlsx";
+import {
+	type FiltroPlanoId,
+	getFiltroPlanoPorId,
+	planoCorrespondeFiltroId,
+} from "~/lib/planos-evo-filtros";
 
 const EVO_API_BASE = "https://evo-integracao-api.w12app.com.br";
 const EVO_USER = process.env.EVO_USER ?? "";
@@ -26,7 +31,97 @@ export interface AlunoAtivoEVO {
 	dataFim: string | null;
 }
 
+/** Contrato individual retornado por /api/v3/membermembership */
+export interface ContratoAtivoEVO {
+	idCliente: number;
+	nomeCliente: string;
+	idPlano: number;
+	nomePlano: string;
+	valor: number;
+	dataInicio: string | null;
+	dataFim: string | null;
+	documento: string | null;
+}
+
+export interface ProfessorEVO {
+	id: number;
+	nome: string;
+}
+
+/** Contrato ativo + conexão (professor/consultor) do aluno */
+export interface ClientePlanoEVO extends ContratoAtivoEVO {
+	idProfessor: number | null;
+	nomeProfessor: string | null;
+	nomeConsultor: string | null;
+}
+
+const STATUS_CONTRATO_ATIVO = 1;
+const MEMBERSHIP_PAGE_SIZE = 50;
+const CONTRATO_PAGE_SIZE = 25;
+const MEMBROS_PAGE_SIZE = 50;
+const EVO_API_PRO =
+	process.env.EVO_API_PRO === "true" || process.env.EVO_API_PRO === "1";
+const EVO_LIMITE_REQUESTS_POR_MINUTO = 40;
+const EVO_LIMITE_REQUESTS_POR_SEGUNDO = 5;
+const EVO_INTERVALO_PLUS_MS =
+	Math.ceil(60_000 / EVO_LIMITE_REQUESTS_POR_MINUTO) + 100;
+const EVO_INTERVALO_PRO_MS =
+	Math.ceil(1000 / EVO_LIMITE_REQUESTS_POR_SEGUNDO) + 50;
+const EVO_ESPERA_429_MINUTO_MS = 65_000;
+const EVO_ESPERA_429_SEGUNDO_MS = 1_100;
+const EVO_MAX_RETRIES_429 = 3;
+const CACHE_PLANOS_TTL_MS = 60 * 60 * 1000;
+const CACHE_CONSULTA_PLANO_TTL_MS = 10 * 60 * 1000;
+
+let ultimoRequestEVOMS = 0;
+let filaThrottleEVO: Promise<void> = Promise.resolve();
+
+type CachePlanosAtivos = {
+	planos: PlanoEVORaw[];
+	expiraEm: number;
+};
+
+type CacheConsultaPlanoEntry = {
+	dataRef: string;
+	todosClientes: ClientePlanoEVO[];
+	professores: ProfessorEVO[];
+	expiraEm: number;
+};
+
+let cachePlanosAtivos: CachePlanosAtivos | null = null;
+const cacheConsultaPlano = new Map<FiltroPlanoId, CacheConsultaPlanoEntry>();
+
 type ClienteRaw = Record<string, unknown>;
+
+type PlanoEVORaw = {
+	idMembership: number;
+	nameMembership: string;
+	inactive?: boolean;
+};
+
+type ContratoEVORaw = {
+	idMember: number;
+	name: string;
+	idMembership: number;
+	nameMembership: string;
+	saleValue: number;
+	membershipStart: string;
+	membershipEnd: string;
+	memberDocument?: string | null;
+	statusMemberMembership: number;
+};
+
+type MembershipListResponse = {
+	list?: PlanoEVORaw[];
+};
+
+type MembroConexaoRaw = {
+	idMember: number;
+	nameEmployeeInstructor?: string | null;
+	idEmployeeInstructor?: number | null;
+	nameEmployeeConsultant?: string | null;
+	idEmployeeConsultant?: number | null;
+};
 
 function getAuthHeader(): string {
 	const credentials = Buffer.from(`${EVO_USER}:${EVO_SECRET}`).toString(
@@ -213,6 +308,487 @@ function estaAtivoNaData(
 	return hoje >= inicioDate && hoje <= fimDate;
 }
 
+function credenciaisNaoConfiguradas(): string {
+	return "Credenciais EVO não configuradas. Defina EVO_USER e EVO_SECRET no .env";
+}
+
+function normalizarTextoPlano(texto: string): string {
+	return texto.trim().toUpperCase();
+}
+
+function planoCorrespondeFiltro(nomePlano: string, filtroPlano: string): boolean {
+	return normalizarTextoPlano(nomePlano).includes(
+		normalizarTextoPlano(filtroPlano),
+	);
+}
+
+function dataSemHorario(data: Date): Date {
+	return new Date(data.getFullYear(), data.getMonth(), data.getDate());
+}
+
+function parseDataISO(str: string | null): Date | null {
+	if (!str?.trim()) return null;
+	const date = new Date(str.trim());
+	return isNaN(date.getTime()) ? null : date;
+}
+
+function formatarDataBR(date: Date): string {
+	const d = String(date.getDate()).padStart(2, "0");
+	const m = String(date.getMonth() + 1).padStart(2, "0");
+	const y = date.getFullYear();
+	return `${d}/${m}/${y}`;
+}
+
+function contratoVigenteNaData(
+	contrato: ContratoEVORaw,
+	dataReferencia: Date,
+): boolean {
+	const hoje = dataSemHorario(dataReferencia);
+	const inicio = parseDataISO(contrato.membershipStart);
+	const fim = parseDataISO(contrato.membershipEnd);
+
+	if (!inicio) return false;
+	const inicioDate = dataSemHorario(inicio);
+	if (hoje < inicioDate) return false;
+	if (!fim) return true;
+
+	return hoje <= dataSemHorario(fim);
+}
+
+function contratoRawParaAtivo(raw: ContratoEVORaw): ContratoAtivoEVO {
+	const inicio = parseDataISO(raw.membershipStart);
+	const fim = parseDataISO(raw.membershipEnd);
+
+	return {
+		idCliente: raw.idMember,
+		nomeCliente: raw.name.trim(),
+		idPlano: raw.idMembership,
+		nomePlano: raw.nameMembership.trim(),
+		valor: raw.saleValue,
+		dataInicio: inicio ? formatarDataBR(inicio) : null,
+		dataFim: fim ? formatarDataBR(fim) : null,
+		documento: raw.memberDocument?.trim() || null,
+	};
+}
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function chaveDataReferencia(data: Date): string {
+	return data.toISOString().slice(0, 10);
+}
+
+function obterIntervaloMinimoEVOMS(): number {
+	return EVO_API_PRO ? EVO_INTERVALO_PRO_MS : EVO_INTERVALO_PLUS_MS;
+}
+
+function esperaApos429(corpoErro: string): number {
+	const texto = corpoErro.toLowerCase();
+	if (
+		texto.includes("5 per 1s") ||
+		texto.includes("per 1s") ||
+		texto.includes("quota exceeded")
+	) {
+		return EVO_ESPERA_429_SEGUNDO_MS;
+	}
+	if (texto.includes("per minute") || texto.includes("40 request")) {
+		return EVO_ESPERA_429_MINUTO_MS;
+	}
+	return EVO_API_PRO ? EVO_ESPERA_429_SEGUNDO_MS : EVO_ESPERA_429_MINUTO_MS;
+}
+
+function aguardarSlotEVO(): Promise<void> {
+	const intervaloMinimo = obterIntervaloMinimoEVOMS();
+	const execucao = filaThrottleEVO.then(async () => {
+		const agora = Date.now();
+		const intervalo = agora - ultimoRequestEVOMS;
+		if (ultimoRequestEVOMS > 0 && intervalo < intervaloMinimo) {
+			await sleep(intervaloMinimo - intervalo);
+		}
+		ultimoRequestEVOMS = Date.now();
+	});
+	filaThrottleEVO = execucao.catch(() => {});
+	return execucao;
+}
+
+async function fetchEVOResponse(
+	url: string,
+	init: RequestInit = {},
+	tentativa429 = 0,
+): Promise<Response> {
+	await aguardarSlotEVO();
+
+	const res = await fetch(url, {
+		...init,
+		headers: {
+			Authorization: getAuthHeader(),
+			...init.headers,
+		},
+	});
+
+	if (res.status === 429 && tentativa429 < EVO_MAX_RETRIES_429) {
+		const corpoErro = await res.text();
+		await sleep(esperaApos429(corpoErro));
+		ultimoRequestEVOMS = 0;
+		return fetchEVOResponse(url, init, tentativa429 + 1);
+	}
+
+	return res;
+}
+
+async function fetchJsonEVO<T>(url: string): Promise<T> {
+	const res = await fetchEVOResponse(url, {
+		headers: { Accept: "application/json" },
+	});
+
+	if (!res.ok) {
+		const text = await res.text();
+		throw new Error(`EVO API retornou ${res.status}: ${text.slice(0, 200)}`);
+	}
+
+	return res.json() as Promise<T>;
+}
+
+async function listarPlanosAtivosEVO(): Promise<PlanoEVORaw[]> {
+	if (cachePlanosAtivos && Date.now() < cachePlanosAtivos.expiraEm) {
+		return cachePlanosAtivos.planos;
+	}
+
+	const planos: PlanoEVORaw[] = [];
+	let skip = 0;
+
+	while (true) {
+		const url =
+			`${EVO_API_BASE}/api/v2/membership?take=${MEMBERSHIP_PAGE_SIZE}` +
+			`&skip=${skip}&active=true`;
+		const data = await fetchJsonEVO<MembershipListResponse | PlanoEVORaw[]>(url);
+		const lista = Array.isArray(data) ? data : (data.list ?? []);
+		planos.push(...lista);
+
+		if (lista.length < MEMBERSHIP_PAGE_SIZE) break;
+		skip += MEMBERSHIP_PAGE_SIZE;
+	}
+
+	cachePlanosAtivos = {
+		planos,
+		expiraEm: Date.now() + CACHE_PLANOS_TTL_MS,
+	};
+
+	return planos;
+}
+
+function obterCacheConsultaPlano(
+	filtroPlanoId: FiltroPlanoId,
+	dataReferencia: Date,
+): CacheConsultaPlanoEntry | undefined {
+	const entry = cacheConsultaPlano.get(filtroPlanoId);
+	if (!entry || Date.now() >= entry.expiraEm) return undefined;
+	if (entry.dataRef !== chaveDataReferencia(dataReferencia)) return undefined;
+	return entry;
+}
+
+function salvarCacheConsultaPlano(
+	filtroPlanoId: FiltroPlanoId,
+	dataReferencia: Date,
+	todosClientes: ClientePlanoEVO[],
+	professores: ProfessorEVO[],
+): void {
+	cacheConsultaPlano.set(filtroPlanoId, {
+		dataRef: chaveDataReferencia(dataReferencia),
+		todosClientes,
+		professores,
+		expiraEm: Date.now() + CACHE_CONSULTA_PLANO_TTL_MS,
+	});
+}
+
+function filtrarClientesPorProfessor(
+	clientes: ClientePlanoEVO[],
+	idProfessor?: number,
+): ClientePlanoEVO[] {
+	if (idProfessor == null) return clientes;
+	return clientes.filter((c) => c.idProfessor === idProfessor);
+}
+
+async function getIdsPlanosPorNome(filtroPlano: string): Promise<number[]> {
+	const planos = await listarPlanosAtivosEVO();
+	return planos
+		.filter((plano) => planoCorrespondeFiltro(plano.nameMembership, filtroPlano))
+		.map((plano) => plano.idMembership);
+}
+
+async function getIdsPlanosPorFiltroId(
+	filtroId: FiltroPlanoId,
+): Promise<number[]> {
+	const planos = await listarPlanosAtivosEVO();
+	return planos
+		.filter((plano) =>
+			planoCorrespondeFiltroId(plano.nameMembership, filtroId),
+		)
+		.map((plano) => plano.idMembership);
+}
+
+function deduplicarContratosPorCliente(
+	contratos: ContratoAtivoEVO[],
+): ContratoAtivoEVO[] {
+	const porCliente = new Map<number, ContratoAtivoEVO>();
+
+	for (const contrato of contratos) {
+		const atual = porCliente.get(contrato.idCliente);
+		if (!atual) {
+			porCliente.set(contrato.idCliente, contrato);
+			continue;
+		}
+
+		const fimAtual = parseDataBR(atual.dataFim);
+		const fimNovo = parseDataBR(contrato.dataFim);
+		if (!fimAtual) continue;
+		if (!fimNovo || fimNovo > fimAtual) {
+			porCliente.set(contrato.idCliente, contrato);
+		}
+	}
+
+	return [...porCliente.values()];
+}
+
+async function buscarConexoesMembros(
+	idsClientes: number[],
+): Promise<Map<number, MembroConexaoRaw>> {
+	const mapa = new Map<number, MembroConexaoRaw>();
+	const unicos = [...new Set(idsClientes)];
+
+	for (let i = 0; i < unicos.length; i += MEMBROS_PAGE_SIZE) {
+		const chunk = unicos.slice(i, i + MEMBROS_PAGE_SIZE).join(",");
+		const url =
+			`${EVO_API_BASE}/api/v2/members?idsMembers=${chunk}` +
+			`&showMemberships=true&take=${MEMBROS_PAGE_SIZE}`;
+		const batch = await fetchJsonEVO<MembroConexaoRaw[]>(url);
+
+		if (!Array.isArray(batch)) continue;
+
+		for (const membro of batch) {
+			mapa.set(membro.idMember, membro);
+		}
+	}
+
+	return mapa;
+}
+
+function montarProfessoresDisponiveis(
+	clientes: ClientePlanoEVO[],
+): ProfessorEVO[] {
+	const mapa = new Map<number, string>();
+
+	for (const cliente of clientes) {
+		if (cliente.idProfessor == null || !cliente.nomeProfessor) continue;
+		mapa.set(cliente.idProfessor, cliente.nomeProfessor);
+	}
+
+	return [...mapa.entries()]
+		.map(([id, nome]) => ({ id, nome }))
+		.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+}
+
+function anexarConexaoAoContrato(
+	contrato: ContratoAtivoEVO,
+	conexao?: MembroConexaoRaw,
+): ClientePlanoEVO {
+	return {
+		...contrato,
+		idProfessor: conexao?.idEmployeeInstructor ?? null,
+		nomeProfessor: conexao?.nameEmployeeInstructor?.trim() || null,
+		nomeConsultor: conexao?.nameEmployeeConsultant?.trim() || null,
+	};
+}
+
+async function getContratosAtivosDoPlano(
+	idPlano: number,
+): Promise<ContratoEVORaw[]> {
+	const contratos: ContratoEVORaw[] = [];
+	let skip = 0;
+
+	while (true) {
+		const url =
+			`${EVO_API_BASE}/api/v3/membermembership?idMembership=${idPlano}` +
+			`&statusMemberMembership=${STATUS_CONTRATO_ATIVO}` +
+			`&take=${CONTRATO_PAGE_SIZE}&skip=${skip}`;
+		const batch = await fetchJsonEVO<ContratoEVORaw[]>(url);
+
+		if (!Array.isArray(batch) || batch.length === 0) break;
+
+		contratos.push(
+			...batch.filter((c) => c.statusMemberMembership === STATUS_CONTRATO_ATIVO),
+		);
+
+		if (batch.length < CONTRATO_PAGE_SIZE) break;
+		skip += CONTRATO_PAGE_SIZE;
+	}
+
+	return contratos;
+}
+
+/**
+ * Busca contratos ativos de um tipo de plano (ex.: "pilates") via membermembership.
+ * Usa statusMemberMembership=1 (ativo) e filtra vigência na data de referência.
+ */
+export async function getContratosAtivosPorPlano(
+	filtroPlano: string,
+	dataReferencia: Date = new Date(),
+): Promise<{ contratos: ContratoAtivoEVO[]; erro?: string }> {
+	if (!EVO_USER || !EVO_SECRET) {
+		return { contratos: [], erro: credenciaisNaoConfiguradas() };
+	}
+
+	const filtro = filtroPlano.trim();
+	if (!filtro) {
+		return { contratos: [], erro: "Informe o nome do plano para filtrar." };
+	}
+
+	try {
+		const idsPlanos = await getIdsPlanosPorNome(filtro);
+		if (idsPlanos.length === 0) {
+			return { contratos: [], erro: `Nenhum plano encontrado para "${filtro}".` };
+		}
+
+		const contratos: ContratoAtivoEVO[] = [];
+
+		for (const idPlano of idsPlanos) {
+			const batch = await getContratosAtivosDoPlano(idPlano);
+			for (const raw of batch) {
+				if (!contratoVigenteNaData(raw, dataReferencia)) continue;
+				contratos.push(contratoRawParaAtivo(raw));
+			}
+		}
+
+		contratos.sort((a, b) => a.nomeCliente.localeCompare(b.nomeCliente, "pt-BR"));
+
+		return { contratos };
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : "Erro desconhecido";
+		return {
+			contratos: [],
+			erro: `Erro ao buscar contratos na EVO: ${msg}`,
+		};
+	}
+}
+
+async function buscarClientesPlanoComConexao(
+	filtroPlanoId: FiltroPlanoId,
+	dataReferencia: Date,
+): Promise<{
+	todosClientes: ClientePlanoEVO[];
+	professores: ProfessorEVO[];
+	erro?: string;
+}> {
+	const filtro = getFiltroPlanoPorId(filtroPlanoId);
+	if (!filtro) {
+		return { todosClientes: [], professores: [], erro: "Tipo de plano inválido." };
+	}
+
+	const idsPlanos = await getIdsPlanosPorFiltroId(filtroPlanoId);
+	if (idsPlanos.length === 0) {
+		return {
+			todosClientes: [],
+			professores: [],
+			erro: `Nenhum plano ativo encontrado para "${filtro.label}".`,
+		};
+	}
+
+	const contratosBrutos: ContratoAtivoEVO[] = [];
+
+	for (const idPlano of idsPlanos) {
+		const batch = await getContratosAtivosDoPlano(idPlano);
+		for (const raw of batch) {
+			if (!contratoVigenteNaData(raw, dataReferencia)) continue;
+			contratosBrutos.push(contratoRawParaAtivo(raw));
+		}
+	}
+
+	const contratosUnicos = deduplicarContratosPorCliente(contratosBrutos);
+	const conexoes = await buscarConexoesMembros(
+		contratosUnicos.map((c) => c.idCliente),
+	);
+
+	const todosClientes = contratosUnicos.map((contrato) =>
+		anexarConexaoAoContrato(contrato, conexoes.get(contrato.idCliente)),
+	);
+
+	const professores = montarProfessoresDisponiveis(todosClientes);
+
+	todosClientes.sort((a, b) =>
+		a.nomeCliente.localeCompare(b.nomeCliente, "pt-BR"),
+	);
+
+	return { todosClientes, professores };
+}
+
+/**
+ * Busca clientes com contrato ativo vigente, filtrados por tipo de plano e
+ * opcionalmente pelo professor da conexão do aluno (nameEmployeeInstructor).
+ */
+export async function getClientesAtivosPorPlanoComConexao(
+	filtroPlanoId: FiltroPlanoId,
+	idProfessor?: number,
+	dataReferencia: Date = new Date(),
+): Promise<{
+	clientes: ClientePlanoEVO[];
+	professores: ProfessorEVO[];
+	erro?: string;
+}> {
+	if (!EVO_USER || !EVO_SECRET) {
+		return {
+			clientes: [],
+			professores: [],
+			erro: credenciaisNaoConfiguradas(),
+		};
+	}
+
+	const cache = obterCacheConsultaPlano(filtroPlanoId, dataReferencia);
+	if (cache) {
+		return {
+			clientes: filtrarClientesPorProfessor(cache.todosClientes, idProfessor),
+			professores: cache.professores,
+		};
+	}
+
+	try {
+		const resultado = await buscarClientesPlanoComConexao(
+			filtroPlanoId,
+			dataReferencia,
+		);
+
+		if (resultado.erro) {
+			return {
+				clientes: [],
+				professores: [],
+				erro: resultado.erro,
+			};
+		}
+
+		salvarCacheConsultaPlano(
+			filtroPlanoId,
+			dataReferencia,
+			resultado.todosClientes,
+			resultado.professores,
+		);
+
+		return {
+			clientes: filtrarClientesPorProfessor(
+				resultado.todosClientes,
+				idProfessor,
+			),
+			professores: resultado.professores,
+		};
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : "Erro desconhecido";
+		return {
+			clientes: [],
+			professores: [],
+			erro: `Erro ao buscar clientes na EVO: ${msg}`,
+		};
+	}
+}
+
 /**
  * Busca alunos ativos na EVO (endpoint activeclients) e filtra os vigentes na data.
  * @param dataReferencia - Data para checar vigência (padrão: hoje)
@@ -230,13 +806,9 @@ export async function getAlunosAtivos(
 	const url = `${EVO_API_BASE}/api/v2/management/activeclients`;
 
 	try {
-		const res = await fetch(url, {
-			headers: {
-				Authorization: getAuthHeader(),
-				Accept: "text/csv, application/vnd.ms-excel, */*",
-			},
+		const res = await fetchEVOResponse(url, {
+			headers: { Accept: "text/csv, application/vnd.ms-excel, */*" },
 		});
-
 		const buffer = await res.arrayBuffer();
 
 		if (!res.ok) {
@@ -349,13 +921,12 @@ export async function getCancelamentosNoMes(
 	const url = `${EVO_API_BASE}/api/v2/management/not-renewed?dtStart=${primeiroDia}&dtEnd=${dataFim}`;
 
 	try {
-		const res = await fetch(url, {
+		const res = await fetchEVOResponse(url, {
 			headers: {
-				Authorization: getAuthHeader(),
-				Accept: "text/csv, application/vnd.ms-excel, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, */*",
+				Accept:
+					"text/csv, application/vnd.ms-excel, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, */*",
 			},
 		});
-
 		const buffer = await res.arrayBuffer();
 
 		if (!res.ok) {

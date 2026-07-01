@@ -16,9 +16,11 @@ import {
 	BanknoteArrowDown,
 	ShoppingCart,
 	UserPen,
+	Clock,
 	HandCoins,
 	CircleX,
 	Dumbbell,
+	Users,
 } from "lucide-react";
 
 export function AppSidebar() {
@@ -112,6 +114,26 @@ export function AppSidebar() {
 									<Link to='/treinos'>
 										<Dumbbell className='size-4 text-yellow-600' />
 										<span>Treinos</span>
+									</Link>
+								</SidebarMenuButton>
+							</SidebarMenuItem>
+							<SidebarMenuItem>
+								<SidebarMenuButton
+									asChild
+									isActive={location.pathname === "/ponto"}>
+									<Link to='/ponto'>
+										<Clock className='size-4 text-orange-400-600' />
+										<span>Ponto</span>
+									</Link>
+								</SidebarMenuButton>
+							</SidebarMenuItem>
+							<SidebarMenuItem>
+								<SidebarMenuButton
+									asChild
+									isActive={location.pathname === "/planos"}>
+									<Link to='/planos'>
+										<Users className='size-4 text-purple-600' />
+										<span>Planos</span>
 									</Link>
 								</SidebarMenuButton>
 							</SidebarMenuItem>

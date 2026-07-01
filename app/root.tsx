@@ -45,6 +45,10 @@ export default function App() {
   return <Outlet />;
 }
 
+export async function action({ request }: Route.ActionArgs) {
+  return new Response("Method Not Allowed", { status: 405 });
+}
+
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   let message = "Oops!";
   let details = "An unexpected error occurred.";

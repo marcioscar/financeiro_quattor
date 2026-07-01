@@ -9,3 +9,7 @@
 /generated/prisma
 
 /generated/prisma
+
+# Exportações com dados de clientes (PII) - não versionar
+/public/FiltroClientes.xlsx
+/public/clientes_pilates.csv

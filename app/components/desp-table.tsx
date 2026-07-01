@@ -75,7 +75,7 @@ export function DataTable<TData extends { id?: string }, TValue>({
 	const hasSelection = selectedRows.length > 0;
 
 	return (
-		<>
+		<div className="min-w-0 w-full max-w-full">
 			{hasSelection && selectionActions && (
 				<div className="mb-4 flex items-center gap-4 rounded-lg border bg-muted/50 px-4 py-3">
 					<span className="text-sm font-medium">
@@ -99,7 +99,7 @@ export function DataTable<TData extends { id?: string }, TValue>({
 					{filterExtra}
 				</div>
 			)}
-			<div className="overflow-x-auto rounded-md border">
+			<div className="max-w-full overflow-x-auto rounded-md border">
 				<Table>
 					<TableHeader>
 						{table.getHeaderGroups().map((headerGroup) => (
@@ -174,6 +174,6 @@ export function DataTable<TData extends { id?: string }, TValue>({
 					</Button>
 				</div>
 			</div>
-		</>
+		</div>
 	);
 }
