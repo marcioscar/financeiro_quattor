@@ -1,5 +1,8 @@
 import type { FiltroPlanoId } from "~/lib/planos-evo-filtros";
-import { getFiltroPlanoPorId } from "~/lib/planos-evo-filtros";
+import {
+	getFiltroPlanoPorId,
+	permiteFiltroProfessor,
+} from "~/lib/planos-evo-filtros";
 import { buscarContratosMes } from "~/models/contratos.server";
 import {
 	type ClientePlanoEVO,
@@ -33,12 +36,16 @@ export async function carregarClientesPlanos(
 		return { erro: "Tipo de plano inválido." };
 	}
 
+	const professorFiltroEfetivo = permiteFiltroProfessor(planoFiltro)
+		? professorFiltro
+		: "todos";
+
 	if (!forcarEvo) {
 		const salvo = await buscarContratosMes(
 			mes,
 			ano,
 			planoFiltro,
-			professorFiltro,
+			professorFiltroEfetivo,
 		);
 		if (salvo) {
 			return {
@@ -51,7 +58,7 @@ export async function carregarClientesPlanos(
 
 	const resultado = await getClientesAtivosPorPlanoComConexao(
 		planoFiltro,
-		parseIdProfessor(professorFiltro),
+		parseIdProfessor(professorFiltroEfetivo),
 	);
 
 	if (resultado.erro) {

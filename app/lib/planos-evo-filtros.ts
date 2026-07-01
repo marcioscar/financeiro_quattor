@@ -81,3 +81,12 @@ export function planoCorrespondeFiltroId(
 	const filtro = filtroPorId.get(filtroId);
 	return filtro ? filtro.corresponde(nomePlano) : false;
 }
+
+/**
+ * Somente o Pilates tem professores distintos por aluno que justificam
+ * filtrar por professor e dividir o repasse no PDF por professor. Nas
+ * demais modalidades os alunos não são divididos por professor.
+ */
+export function permiteFiltroProfessor(filtroId: FiltroPlanoId): boolean {
+	return filtroId === "pilates";
+}

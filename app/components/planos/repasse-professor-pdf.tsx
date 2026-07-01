@@ -1,7 +1,7 @@
 import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import { calcularResumoRepasse } from "~/lib/plano-preco-mensal";
 import {
-	agruparPorProfessor,
+	agruparClientesRepasse,
 	calcularAlturaPaginaRepasse,
 	calcularValoresLinha,
 	formatarMoedaPdf,
@@ -166,14 +166,16 @@ export function RepasseProfessorPdf({
 	planoLabel,
 	professorFiltro,
 	clientes,
+	dividirPorProfessor,
 }: {
 	mes: number;
 	ano: number;
 	planoLabel: string;
 	professorFiltro: string;
 	clientes: ClientePlanoEVO[];
+	dividirPorProfessor: boolean;
 }) {
-	const secoes = agruparPorProfessor(clientes);
+	const secoes = agruparClientesRepasse(clientes, dividirPorProfessor);
 	const resumo = calcularResumoRepasse(clientes);
 	const nomeProfessor = secoes[0]?.professor;
 	const titulo = montarTituloRepassePdf(
@@ -237,6 +239,7 @@ export async function renderRepasseProfessorPdfToBuffer(
 	planoLabel: string,
 	professorFiltro: string,
 	clientes: ClientePlanoEVO[],
+	dividirPorProfessor: boolean,
 ) {
 	const ReactPDF = await import("@react-pdf/renderer");
 	return ReactPDF.renderToBuffer(
@@ -246,6 +249,7 @@ export async function renderRepasseProfessorPdfToBuffer(
 			planoLabel={planoLabel}
 			professorFiltro={professorFiltro}
 			clientes={clientes}
+			dividirPorProfessor={dividirPorProfessor}
 		/>,
 	);
 }

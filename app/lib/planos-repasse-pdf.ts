@@ -62,6 +62,31 @@ export function agruparPorProfessor(
 		});
 }
 
+/**
+ * Quando `dividirPorProfessor` é falso, os alunos ficam numa única seção sem
+ * divisão/subtotal por professor (usado para todas as modalidades exceto
+ * Pilates, onde o repasse não é dividido entre professores).
+ */
+export function agruparClientesRepasse(
+	clientes: ClientePlanoEVO[],
+	dividirPorProfessor: boolean,
+): SecaoRepasseProfessor[] {
+	if (!dividirPorProfessor) {
+		const clientesOrdenados = [...clientes].sort((a, b) =>
+			a.nomeCliente.localeCompare(b.nomeCliente, "pt-BR"),
+		);
+		return [
+			{
+				professor: "",
+				clientes: clientesOrdenados,
+				totalRepasse: calcularResumoRepasse(clientes).totalRepasse,
+			},
+		];
+	}
+
+	return agruparPorProfessor(clientes);
+}
+
 export function calcularValoresLinha(cliente: ClientePlanoEVO) {
 	return {
 		mensalidade: calcularPrecoMensal(cliente.valor, cliente.nomePlano),

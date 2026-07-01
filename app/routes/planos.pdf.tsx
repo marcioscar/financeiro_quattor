@@ -3,6 +3,7 @@ import { renderRepasseProfessorPdfToBuffer } from "~/components/planos/repasse-p
 import { montarNomeArquivoRepassePdf } from "~/lib/planos-repasse-pdf";
 import {
 	getFiltroPlanoPorId,
+	permiteFiltroProfessor,
 	type FiltroPlanoId,
 } from "~/lib/planos-evo-filtros";
 import { carregarClientesPlanos } from "~/models/planos-dados.server";
@@ -35,12 +36,15 @@ export async function loader({ request }: LoaderFunctionArgs) {
 		return new Response("Plano inválido.", { status: 400 });
 	}
 
+	const dividirPorProfessor = permiteFiltroProfessor(filtro.id);
+	const professorEfetivo = dividirPorProfessor ? professorParam : "todos";
+
 	const { mes, ano } = parseMesAno(url);
 	const resultado = await carregarClientesPlanos(
 		mes,
 		ano,
 		filtro.id as FiltroPlanoId,
-		professorParam,
+		professorEfetivo,
 		forcarEvo,
 	);
 
@@ -58,14 +62,15 @@ export async function loader({ request }: LoaderFunctionArgs) {
 		mes,
 		ano,
 		resultado.planoLabel,
-		professorParam,
+		professorEfetivo,
 		resultado.clientes,
+		dividirPorProfessor,
 	);
 	const body = new Uint8Array(buffer);
 
 	const filename = montarNomeArquivoRepassePdf(
 		resultado.planoLabel,
-		professorParam,
+		professorEfetivo,
 		resultado.clientes[0]?.nomeProfessor,
 		mes,
 		ano,

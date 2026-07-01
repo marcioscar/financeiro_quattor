@@ -47,6 +47,7 @@ import {
 import {
 	FILTROS_PLANO_EVO,
 	getFiltroPlanoPorId,
+	permiteFiltroProfessor,
 	type FiltroPlanoId,
 } from "~/lib/planos-evo-filtros";
 import {
@@ -128,7 +129,9 @@ export async function loader({ request }: Route.LoaderArgs) {
 		};
 	}
 
-	const professorFiltro = professorParam ?? "todos";
+	const professorFiltro = permiteFiltroProfessor(filtro.id)
+		? (professorParam ?? "todos")
+		: "todos";
 
 	if (!forcarEvo) {
 		const salvo = await buscarContratosMes(
@@ -196,7 +199,9 @@ export async function action({ request }: Route.ActionArgs) {
 	);
 
 	const professorFiltro =
-		typeof professorParam === "string" && professorParam
+		permiteFiltroProfessor(filtro.id) &&
+		typeof professorParam === "string" &&
+		professorParam
 			? professorParam
 			: "todos";
 
@@ -468,25 +473,27 @@ export default function Planos() {
 					</Select>
 				</div>
 
-				<div className="space-y-2">
-					<label className="text-sm font-medium">Professor</label>
-					<Select
-						value={professorSelecionado ?? "todos"}
-						onValueChange={handleProfessorChange}
-						disabled={!planoSelecionado || carregando}>
-						<SelectTrigger className="w-full min-w-[220px]">
-							<SelectValue placeholder="Todos os professores" />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="todos">Todos os professores</SelectItem>
-							{professores.map((prof) => (
-								<SelectItem key={prof.id} value={String(prof.id)}>
-									{prof.nome}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-				</div>
+				{planoSelecionado && permiteFiltroProfessor(planoSelecionado) && (
+					<div className="space-y-2">
+						<label className="text-sm font-medium">Professor</label>
+						<Select
+							value={professorSelecionado ?? "todos"}
+							onValueChange={handleProfessorChange}
+							disabled={!planoSelecionado || carregando}>
+							<SelectTrigger className="w-full min-w-[220px]">
+								<SelectValue placeholder="Todos os professores" />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="todos">Todos os professores</SelectItem>
+								{professores.map((prof) => (
+									<SelectItem key={prof.id} value={String(prof.id)}>
+										{prof.nome}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</div>
+				)}
 
 				{carregando && (
 					<div className="flex items-center gap-2 pb-2 text-sm text-muted-foreground">
