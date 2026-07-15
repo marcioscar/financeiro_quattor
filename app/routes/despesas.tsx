@@ -217,8 +217,8 @@ export default function Despesas() {
 				data={despesas}
 				getRowId={(row) => row.id}
 				onRowClick={setEditingDespesa}
-				filterColumn="conta"
-				filterPlaceholder="Filtrar por conta..."
+				filterMode="global"
+				filterPlaceholder="Filtrar por qualquer campo..."
 			/>
 			{editingDespesa && (
 				<DialogEditarDespesa

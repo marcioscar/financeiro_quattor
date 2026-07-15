@@ -21,6 +21,7 @@ import {
 	CircleX,
 	Dumbbell,
 	Users,
+	ReceiptText,
 } from "lucide-react";
 
 export function AppSidebar() {
@@ -144,6 +145,16 @@ export function AppSidebar() {
 									<Link to='/cancelamentos'>
 										<CircleX className='size-4 text-orange-400-600' />
 										<span>Cancelamentos</span>
+									</Link>
+								</SidebarMenuButton>
+							</SidebarMenuItem>
+							<SidebarMenuItem>
+								<SidebarMenuButton
+									asChild
+									isActive={location.pathname === "/notas-fiscais"}>
+									<Link to='/notas-fiscais'>
+										<ReceiptText className='size-4 text-green-600' />
+										<span>Notas Fiscais</span>
 									</Link>
 								</SidebarMenuButton>
 							</SidebarMenuItem>

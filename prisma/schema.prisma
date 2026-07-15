@@ -8,12 +8,20 @@ datasource db {
 }
 
 model receitas {
-    id        String    @id @default(auto()) @map("_id") @db.ObjectId
-    forma     String?
-    descricao String?
-    valor     Float?
-    data      DateTime?
-    status    String?
+    id                  String    @id @default(auto()) @map("_id") @db.ObjectId
+    forma               String?
+    descricao           String?
+    valor               Float?
+    data                DateTime?
+    status              String?
+    /// Hash (data+descricao+valor) das receitas importadas do extrato bancário —
+    /// usado para descartar lançamentos já importados quando o arquivo semanal
+    /// se sobrepõe a semanas anteriores. Ausente em receitas criadas manualmente.
+    /// Sem `@unique`: no MongoDB isso quebraria a criação manual de receitas
+    /// (índice único trata "campo ausente" como null e não aceita duas ausências).
+    origem_extrato_hash String?
+
+    @@index([origem_extrato_hash])
 }
 
 model despesas {
@@ -142,4 +150,55 @@ model contratos {
     @@unique([mes, ano, plano_filtro, professor_filtro], name: "contrato_mes_plano_professor")
     @@index([mes, ano])
     @@map("contratos")
+}
+
+type ItemNotaFiscal {
+    id_evo            String
+    tipo              String?
+    numero            String?
+    status            String?
+    data_emissao      DateTime?
+    enviada_por_email Boolean?
+    nome_cliente      String?
+    valor_total       Float?
+    link_download_pdf String?
+}
+
+/**
+ * Cache mensal de notas fiscais (EVO/eNotas). Meses fechados (anteriores ao
+ * mês corrente) são gravados uma vez e nunca mais consultados na EVO. O mês
+ * corrente é sincronizado de forma incremental via `ultima_sincronizacao_em`.
+ */
+model notas_fiscais_mes {
+    id                      String           @id @default(auto()) @map("_id") @db.ObjectId
+    mes                     Int
+    ano                     Int
+    fechado                 Boolean          @default(false)
+    ultima_sincronizacao_em DateTime?
+    gravado_em              DateTime         @default(now())
+    itens                   ItemNotaFiscal[]
+
+    @@unique([mes, ano], name: "notas_fiscais_mes_ano")
+}
+
+/**
+ * Vendas importadas do extrato CSV da Stone (operadora de cartão). O CSV
+ * baixado sempre traz o mês inteiro, então a importação é idempotente por
+ * `stone_id` (único por transação) — reimportar o mesmo arquivo (ou um mais
+ * recente que sobreponha dias já importados) não duplica nada.
+ */
+model vendas_stone {
+    id            String    @id @default(auto()) @map("_id") @db.ObjectId
+    stone_id      String    @unique
+    documento     String?
+    data_venda    DateTime
+    bandeira      String?
+    produto       String?
+    n_parcelas    Int?
+    valor_bruto   Float
+    valor_liquido Float?
+    ultimo_status String?
+    importado_em  DateTime  @default(now())
+
+    @@index([data_venda])
 }

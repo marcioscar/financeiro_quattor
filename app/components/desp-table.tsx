@@ -33,6 +33,8 @@ interface DataTableProps<TData, TValue> {
 	filterColumn?: string;
 	filterPlaceholder?: string;
 	filterExtra?: React.ReactNode;
+	/** "column" (padrão) filtra só `filterColumn`; "global" filtra por qualquer coluna da tabela. */
+	filterMode?: "column" | "global";
 	onRowClick?: (row: TData) => void;
 	/** Desative quando `data` for editada localmente a cada tecla (ex.: tabelas com inputs inline) para a paginação não voltar pra página 1 a cada alteração. */
 	autoResetPageIndex?: boolean;
@@ -49,12 +51,14 @@ export function DataTable<TData extends { id?: string }, TValue>({
 	filterColumn = "fornecedor",
 	filterPlaceholder = "Filtrar por fornecedor...",
 	filterExtra,
+	filterMode = "column",
 	onRowClick,
 	autoResetPageIndex = true,
 	pinnedRowIds,
 }: DataTableProps<TData, TValue>) {
 	const [sorting, setSorting] = useState<SortingState>([]);
 	const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+	const [globalFilter, setGlobalFilter] = useState("");
 	const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
 
 	const table = useReactTable({
@@ -68,12 +72,14 @@ export function DataTable<TData extends { id?: string }, TValue>({
 		onSortingChange: setSorting,
 		getSortedRowModel: getSortedRowModel(),
 		onColumnFiltersChange: setColumnFilters,
+		onGlobalFilterChange: setGlobalFilter,
 		getFilteredRowModel: getFilteredRowModel(),
 		onRowSelectionChange: setRowSelection,
 		enableRowSelection,
 		state: {
 			sorting,
 			columnFilters,
+			globalFilter,
 			rowSelection,
 			rowPinning: { top: pinnedRowIds ?? [], bottom: [] },
 		},
@@ -93,20 +99,32 @@ export function DataTable<TData extends { id?: string }, TValue>({
 					{selectionActions(selectedRows)}
 				</div>
 			)}
-			{filterColumn && (
+			{filterMode === "global" ? (
 				<div className="flex flex-wrap items-center gap-2 py-4">
 					<Input
 						placeholder={filterPlaceholder}
-						value={
-							(table.getColumn(filterColumn)?.getFilterValue() as string) ?? ""
-						}
-						onChange={(event) =>
-							table.getColumn(filterColumn)?.setFilterValue(event.target.value)
-						}
+						value={globalFilter}
+						onChange={(event) => setGlobalFilter(event.target.value)}
 						className="max-w-sm"
 					/>
 					{filterExtra}
 				</div>
+			) : (
+				filterColumn && (
+					<div className="flex flex-wrap items-center gap-2 py-4">
+						<Input
+							placeholder={filterPlaceholder}
+							value={
+								(table.getColumn(filterColumn)?.getFilterValue() as string) ?? ""
+							}
+							onChange={(event) =>
+								table.getColumn(filterColumn)?.setFilterValue(event.target.value)
+							}
+							className="max-w-sm"
+						/>
+						{filterExtra}
+					</div>
+				)
 			)}
 			<div className="max-w-full overflow-x-auto rounded-md border">
 				<Table>

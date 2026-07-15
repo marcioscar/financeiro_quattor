@@ -15,6 +15,7 @@ export default [
         route("planos/pdf", "routes/planos.pdf.tsx"),
         route("contas", "routes/contas.tsx"),
         route("ponto", "routes/ponto.tsx"),
+        route("notas-fiscais", "routes/notas-fiscais.tsx"),
         route("*", "routes/not-found.tsx"),
     ]),
 ] satisfies RouteConfig;

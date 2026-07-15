@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
-import { useLoaderData } from "react-router";
+import { useMemo, useRef, useState } from "react";
+import { useFetcher, useLoaderData } from "react-router";
+import { AlertCircle, Upload } from "lucide-react";
 import type { Route } from "./+types/receitas";
 import {
 	getReceitas,
@@ -7,6 +8,9 @@ import {
 	updateReceita,
 	deleteReceita,
 } from "~/models/receitas.server";
+import { importarExtratoReceitas } from "~/models/receitas-extrato.server";
+import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert";
+import { Button } from "~/components/ui/button";
 import { DataTable } from "~/components/desp-table";
 import { getColumnsRec } from "~/components/receitas/columns-rec";
 import { DialogNovaReceita } from "~/components/receitas/dialog-nova-receita";
@@ -23,6 +27,23 @@ export async function action({ request }: Route.ActionArgs) {
 
 	const formData = await request.formData();
 	const intent = formData.get("intent");
+
+	if (intent === "importar_extrato") {
+		const file = formData.get("arquivo");
+		if (!(file instanceof File) || file.size === 0) {
+			return { error: "Selecione o arquivo de extrato bancário (.txt)." };
+		}
+
+		try {
+			const buffer = Buffer.from(await file.arrayBuffer());
+			const resultado = await importarExtratoReceitas(buffer);
+			return { success: true, ...resultado };
+		} catch (err) {
+			const msg =
+				err instanceof Error ? err.message : "Erro ao importar o extrato.";
+			return { error: msg };
+		}
+	}
 
 	if (intent === "excluir_receita") {
 		const id = formData.get("id");
@@ -146,6 +167,13 @@ function formatarMoeda(valor: number | null | undefined): string {
 export default function Receitas() {
 	const { receitas } = useLoaderData<typeof loader>();
 	const [editingReceita, setEditingReceita] = useState<Receita | null>(null);
+	const fetcherExtrato = useFetcher<{
+		success?: boolean;
+		error?: string;
+		inseridas?: number;
+		ignoradas?: number;
+	}>();
+	const fileInputRef = useRef<HTMLInputElement>(null);
 
 	const totalReceitas = useMemo(() => {
 		const hoje = new Date();
@@ -154,7 +182,7 @@ export default function Receitas() {
 		return receitas.reduce((acc: number, r: Receita) => {
 			if (!r.data) return acc;
 			const data = new Date(r.data);
-			if (data.getMonth() === mesAtual && data.getFullYear() === anoAtual) {
+			if (data.getUTCMonth() === mesAtual && data.getUTCFullYear() === anoAtual) {
 				return acc + (r.valor ?? 0);
 			}
 			return acc;
@@ -167,6 +195,36 @@ export default function Receitas() {
 				<div className="flex flex-wrap items-center gap-2">
 					<h1 className="text-2xl font-bold text-orange-500">Receitas</h1>
 					<DialogNovaReceita />
+					<fetcherExtrato.Form method="post" encType="multipart/form-data">
+						<input type="hidden" name="intent" value="importar_extrato" />
+						<input
+							ref={fileInputRef}
+							type="file"
+							name="arquivo"
+							accept=".txt,.csv"
+							className="hidden"
+							onChange={(e) => {
+								const form = e.target.form;
+								if (form && e.target.files?.[0]) {
+									fetcherExtrato.submit(form, {
+										method: "post",
+										encType: "multipart/form-data",
+									});
+								}
+							}}
+						/>
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							onClick={() => fileInputRef.current?.click()}
+							disabled={fetcherExtrato.state !== "idle"}>
+							<Upload className="mr-2 size-4" />
+							{fetcherExtrato.state !== "idle"
+								? "Importando..."
+								: "Importar extrato bancário"}
+						</Button>
+					</fetcherExtrato.Form>
 				</div>
 				<div className="rounded-lg border bg-stone-50 px-4 py-2">
 					<p className="text-xs font-medium text-stone-500">
@@ -177,6 +235,28 @@ export default function Receitas() {
 					</p>
 				</div>
 			</div>
+
+			{fetcherExtrato.data?.error && (
+				<Alert variant="destructive">
+					<AlertCircle className="size-4" />
+					<AlertTitle>Erro ao importar extrato</AlertTitle>
+					<AlertDescription>{fetcherExtrato.data.error}</AlertDescription>
+				</Alert>
+			)}
+			{fetcherExtrato.data?.success && fetcherExtrato.state === "idle" && (
+				<Alert>
+					<Upload className="size-4" />
+					<AlertTitle>Importação concluída</AlertTitle>
+					<AlertDescription>
+						{fetcherExtrato.data.inseridas} receita(s) nova(s) criada(s)
+						{fetcherExtrato.data.ignoradas
+							? `, ${fetcherExtrato.data.ignoradas} já importada(s) anteriormente (ignorada(s))`
+							: ""}
+						.
+					</AlertDescription>
+				</Alert>
+			)}
+
 			<DataTable
 				columns={getColumnsRec({ onEdit: setEditingReceita })}
 				data={receitas}

@@ -948,3 +948,109 @@ export async function getCancelamentosNoMes(
 		return { total: 0, erro: `Erro ao buscar cancelamentos na EVO: ${msg}` };
 	}
 }
+
+/** Nota fiscal de saída (NFS-e/NF-e/NFC-e) emitida via integração eNotas. */
+export interface NotaFiscalSaidaEVO {
+	id: string;
+	tipo: string | null;
+	numero: string | null;
+	status: string | null;
+	dataEmissao: string | null;
+	enviadaPorEmail: boolean;
+	nomeCliente: string | null;
+	valorTotal: number;
+	linkDownloadPDF: string | null;
+}
+
+type NotaFiscalRaw = {
+	id: string;
+	tipo?: string | null;
+	numero?: string | null;
+	status?: string | null;
+	dataEmissao?: string | null;
+	enviadaPorEmail?: boolean;
+	cliente?: { nome?: string | null } | null;
+	valorTotal?: number | null;
+	linkDownloadPDF?: string | null;
+};
+
+const INVOICE_PAGE_SIZE = 250;
+
+function rawParaNotaFiscal(raw: NotaFiscalRaw): NotaFiscalSaidaEVO {
+	return {
+		id: raw.id,
+		tipo: raw.tipo ?? null,
+		numero: raw.numero ?? null,
+		status: raw.status ?? null,
+		dataEmissao: raw.dataEmissao ?? null,
+		enviadaPorEmail: raw.enviadaPorEmail ?? false,
+		nomeCliente: raw.cliente?.nome ?? null,
+		valorTotal: raw.valorTotal ?? 0,
+		linkDownloadPDF: raw.linkDownloadPDF ?? null,
+	};
+}
+
+export interface BuscarNotasFiscaisEVOParams {
+	issueDateStart: Date;
+	issueDateEnd: Date;
+	/** Quando informado, retorna só notas cuja última alteração ocorreu a partir desta data (sincronização incremental). */
+	lastDateChangeStart?: Date;
+}
+
+/**
+ * Status "Emitida"/"Autorizada" no filtro `statusInvoice` do endpoint de
+ * invoices (1-Emitida, 2-Com erro, 3-Cancelada, 4-Criada). É o único filtro
+ * confiável: o campo de texto `status` retornado varia bastante entre
+ * integrações ("Autorizada", "CancelamentoNegado", `null`, ...) e não segue
+ * um vocabulário fixo, então não deve ser usado para decidir validade.
+ */
+const INVOICE_STATUS_EMITIDA = "1";
+
+/**
+ * Busca notas fiscais de saída (NFS-e/NF-e/NFC-e) emitidas com sucesso
+ * (statusInvoice=1) no período informado, via `/api/v2/invoices/get-invoices`
+ * (integração eNotas da EVO).
+ */
+export async function buscarNotasFiscaisSaidaEVO(
+	params: BuscarNotasFiscaisEVOParams,
+): Promise<{ notas: NotaFiscalSaidaEVO[]; erro?: string }> {
+	if (!EVO_USER || !EVO_SECRET) {
+		return { notas: [], erro: credenciaisNaoConfiguradas() };
+	}
+
+	try {
+		const notas: NotaFiscalSaidaEVO[] = [];
+		let skip = 0;
+
+		while (true) {
+			const qs = new URLSearchParams({
+				issueDateStart: params.issueDateStart.toISOString(),
+				issueDateEnd: params.issueDateEnd.toISOString(),
+				statusInvoice: INVOICE_STATUS_EMITIDA,
+				take: String(INVOICE_PAGE_SIZE),
+				skip: String(skip),
+			});
+			if (params.lastDateChangeStart) {
+				qs.set(
+					"lastDateChangeStart",
+					params.lastDateChangeStart.toISOString(),
+				);
+			}
+
+			const url = `${EVO_API_BASE}/api/v2/invoices/get-invoices?${qs.toString()}`;
+			const batch = await fetchJsonEVO<NotaFiscalRaw[]>(url);
+
+			if (!Array.isArray(batch) || batch.length === 0) break;
+
+			notas.push(...batch.map(rawParaNotaFiscal));
+
+			if (batch.length < INVOICE_PAGE_SIZE) break;
+			skip += INVOICE_PAGE_SIZE;
+		}
+
+		return { notas };
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : "Erro desconhecido";
+		return { notas: [], erro: `Erro ao buscar notas fiscais na EVO: ${msg}` };
+	}
+}

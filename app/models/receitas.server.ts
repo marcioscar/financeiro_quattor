@@ -1,4 +1,5 @@
 import { db } from "~/db.server";
+import { limitesMesCivilUTC } from "~/lib/despesas-calendar";
 
 export async function createReceita(data: {
 	forma: string;
@@ -41,9 +42,9 @@ export async function deleteReceita(id: string) {
 }
 
 export async function getReceitas() {
-	const anoAtual = new Date().getFullYear();
-	const inicioAno = new Date(anoAtual, 0, 1);
-	const fimAno = new Date(anoAtual, 11, 31, 23, 59, 59, 999);
+	const anoAtual = new Date().getUTCFullYear();
+	const inicioAno = new Date(Date.UTC(anoAtual, 0, 1, 0, 0, 0, 0));
+	const fimAno = new Date(Date.UTC(anoAtual, 11, 31, 23, 59, 59, 999));
 
 	return db.receitas.findMany({
 		where: {
@@ -56,18 +57,22 @@ export async function getReceitas() {
 	});
 }
 
-/** Soma de todas as receitas do mês (faturamento) */
+/**
+ * Soma de todas as receitas do mês (faturamento). Usa mês civil em UTC —
+ * `dataRef` é comparado com `getUTCFullYear`/`getUTCMonth`, não os getters
+ * locais, senão em fusos negativos (ex.: America/Sao_Paulo) receitas do dia
+ * 1º do mês (gravadas à meia-noite UTC) ficam fora do intervalo local.
+ */
 export async function getFaturamentoDoMes(
 	dataRef: Date = new Date(),
 ): Promise<number> {
-	const ano = dataRef.getFullYear();
-	const mes = dataRef.getMonth();
-	const inicioMes = new Date(ano, mes, 1);
-	const fimMes = new Date(ano, mes + 1, 0, 23, 59, 59, 999);
+	const ano = dataRef.getUTCFullYear();
+	const mes = dataRef.getUTCMonth() + 1;
+	const { inicio, fim } = limitesMesCivilUTC(ano, mes);
 
 	const receitas = await db.receitas.findMany({
 		where: {
-			data: { gte: inicioMes, lte: fimMes },
+			data: { gte: inicio, lte: fim },
 		},
 		select: { valor: true },
 	});
