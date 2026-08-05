@@ -154,13 +154,13 @@ function rawParaAlunoAtivo(raw: ClienteRaw): AlunoAtivoEVO {
 		idFilial: toNum(getRawVal(raw, "idFilial", "IdFilial")),
 		nomeFilial: toStr(getRawVal(raw, "filial", "Filial")),
 		nomeCliente: toStr(getRawVal(raw, "nomeCompleto", "NomeCompleto")),
-		cpf: null,
+		cpf: toStr(getRawVal(raw, "cpf", "Cpf")),
 		telefone: toStr(getRawVal(raw, "telefone", "Telefone")),
 		email: toStr(getRawVal(raw, "email", "Email")),
 		idCliente: toNum(getRawVal(raw, "idCliente", "IdCliente")),
 		descricaoContrato: toStr(getRawVal(raw, "contratoAtivo", "ContratoAtivo")),
-		tipoContrato: null,
-		idTipoContrato: 0,
+		tipoContrato: toStr(getRawVal(raw, "tipoContrato", "TipoContrato")),
+		idTipoContrato: toNum(getRawVal(raw, "idTipoContrato", "IdTipoContrato")),
 		dataInicio: toStr(getRawVal(raw, "dtInicioContratoAtivo", "DtInicioContratoAtivo")),
 		dataFim: toStr(getRawVal(raw, "dtFimContratoAtivo", "DtFimContratoAtivo")),
 	};
@@ -172,35 +172,51 @@ function isExcel(buffer: ArrayBuffer): boolean {
 	return arr[0] === 0x50 && arr[1] === 0x4b; // PK = ZIP/XLSX
 }
 
-/** Mapeia nomes de coluna do Excel/CSV (EVO pode usar variações) para chaves esperadas */
+/**
+ * Mapeia nomes de coluna do Excel/CSV (EVO pode usar variações) para chaves
+ * esperadas. Inclui as colunas em inglês de `/api/v2/members/active-members`.
+ */
 function normalizarCol(nome: string): string {
 	const s = String(nome).trim().toLowerCase().replace(/\s+/g, "");
 	const map: Record<string, string> = {
 		idfilial: "idFilial",
+		idbranch: "idFilial",
 		filial: "filial",
+		branchname: "filial",
 		idcliente: "idCliente",
+		idmember: "idCliente",
 		nomecompleto: "nomeCompleto",
 		nome: "nomeCompleto",
+		membername: "nomeCompleto",
+		document: "cpf",
+		cpf: "cpf",
 		telefone: "telefone",
 		email: "email",
 		contratoativo: "contratoAtivo",
 		contrato: "contratoAtivo",
+		contractdescription: "contratoAtivo",
+		contracttype: "tipoContrato",
+		idcontracttype: "idTipoContrato",
 		dtiniciocontratoativo: "dtInicioContratoAtivo",
 		datainicio: "dtInicioContratoAtivo",
 		inicio: "dtInicioContratoAtivo",
+		startdate: "dtInicioContratoAtivo",
 		dtfimcontratoativo: "dtFimContratoAtivo",
 		datafim: "dtFimContratoAtivo",
 		fim: "dtFimContratoAtivo",
+		enddate: "dtFimContratoAtivo",
 	};
 	return map[s] ?? nome;
 }
 
-/** Verifica se o texto parece CSV (cabeçalho com IdFilial ou IdCliente) */
+/** Verifica se o texto parece CSV (cabeçalho com IdFilial/IdBranch ou IdCliente/IdMember) */
 function isCsv(text: string): boolean {
 	const firstLine = text.split("\n")[0] ?? "";
 	return (
 		firstLine.includes("IdFilial") ||
 		firstLine.includes("IdCliente") ||
+		firstLine.includes("IdBranch") ||
+		firstLine.includes("IdMember") ||
 		(firstLine.includes(";") && firstLine.toLowerCase().includes("filial"))
 	);
 }
@@ -790,7 +806,12 @@ export async function getClientesAtivosPorPlanoComConexao(
 }
 
 /**
- * Busca alunos ativos na EVO (endpoint activeclients) e filtra os vigentes na data.
+ * Busca alunos ativos na EVO e filtra os vigentes na data.
+ *
+ * Usa `/api/v2/members/active-members` (retorna planilha com colunas em inglês).
+ * O antigo `/api/v2/management/activeclients` foi mantido na documentação mas
+ * responde 406 para qualquer Accept, por isso não é mais usado.
+ *
  * @param dataReferencia - Data para checar vigência (padrão: hoje)
  */
 export async function getAlunosAtivos(
@@ -803,7 +824,7 @@ export async function getAlunosAtivos(
 		};
 	}
 
-	const url = `${EVO_API_BASE}/api/v2/management/activeclients`;
+	const url = `${EVO_API_BASE}/api/v2/members/active-members`;
 
 	try {
 		const res = await fetchEVOResponse(url, {
@@ -850,57 +871,23 @@ export async function getAlunosAtivos(
 	}
 }
 
-function isFlCanceladoTrue(val: unknown): boolean {
-	if (val === true) return true;
-	if (val === 1) return true;
-	const s = String(val ?? "").trim().toLowerCase();
-	return ["true", "1", "sim", "yes"].includes(s);
-}
+const STATUS_CONTRATO_CANCELADO = 2;
+/** Trava de segurança na paginação de cancelamentos (25 * 80 = 2000 contratos) */
+const MAX_PAGINAS_CANCELAMENTOS = 80;
 
-/** Extrai linhas de planilha Excel/CSV e conta onde FlCancelado é true */
-function contarCanceladosDeBuffer(
-	buffer: ArrayBuffer,
-	isExcelFile: boolean,
-): number {
-	if (isExcelFile) {
-		const workbook = XLSX.read(buffer, { type: "array" });
-		const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-		if (!firstSheet) return 0;
-
-		const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(
-			firstSheet,
-			{ raw: false, defval: "" },
-		);
-
-		return rows.filter((row) => {
-			const val = row["FlCancelado"] ?? row["flCancelado"];
-			return isFlCanceladoTrue(val);
-		}).length;
-	}
-
-	const text = new TextDecoder("utf-8", { fatal: false }).decode(buffer);
-	const lines = text.trim().split(/\r?\n/);
-	if (lines.length < 2) return 0;
-
-	const sep = lines[0].includes(";") ? ";" : ",";
-	const headers = lines[0].split(sep).map((h) => h.trim());
-	const idxFlCancelado = headers.findIndex(
-		(h) => h.toLowerCase().replace(/\s+/g, "") === "flcancelado",
-	);
-	if (idxFlCancelado < 0) return 0;
-
-	let count = 0;
-	for (let i = 1; i < lines.length; i++) {
-		const cols = parseCsvLine(lines[i], sep);
-		const val = cols[idxFlCancelado];
-		if (isFlCanceladoTrue(val)) count++;
-	}
-	return count;
-}
+type ContratoCanceladoRaw = {
+	idMemberMemberShip?: number;
+	idMember?: number;
+	cancelDate?: string | null;
+	statusMemberMembership?: number;
+};
 
 /**
- * Busca clientes não renovados (not-renewed) no mês e retorna
- * a quantidade de cancelamentos (FlCancelado = true).
+ * Conta contratos cancelados no mês via `/api/v3/membermembership`
+ * (statusMemberMembership=2 + faixa de cancelDate).
+ *
+ * Substitui `/api/v2/management/not-renewed`, que responde 406 para qualquer
+ * Accept desde 2026 — o relatório de não-renovados deixou de ser servido.
  */
 export async function getCancelamentosNoMes(
 	dataRef: Date = new Date(),
@@ -914,35 +901,47 @@ export async function getCancelamentosNoMes(
 
 	const ano = dataRef.getFullYear();
 	const mes = dataRef.getMonth();
-	const primeiroDia = `${ano}-${String(mes + 1).padStart(2, "0")}-01`;
-	const ultimoDia = new Date(ano, mes + 1, 0).getDate();
-	const dataFim = `${ano}-${String(mes + 1).padStart(2, "0")}-${String(ultimoDia).padStart(2, "0")}`;
-
-	const url = `${EVO_API_BASE}/api/v2/management/not-renewed?dtStart=${primeiroDia}&dtEnd=${dataFim}`;
+	const inicio = new Date(Date.UTC(ano, mes, 1, 0, 0, 0));
+	const fim = new Date(Date.UTC(ano, mes + 1, 0, 23, 59, 59));
 
 	try {
-		const res = await fetchEVOResponse(url, {
-			headers: {
-				Accept:
-					"text/csv, application/vnd.ms-excel, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, */*",
-			},
-		});
-		const buffer = await res.arrayBuffer();
+		const contratos = new Set<number>();
+		let semIdentificador = 0;
+		let skip = 0;
 
-		if (!res.ok) {
-			const text = new TextDecoder("utf-8", { fatal: false }).decode(buffer);
-			return {
-				total: 0,
-				erro: `EVO API retornou ${res.status}: ${text.slice(0, 200)}`,
-			};
+		for (let pagina = 0; pagina < MAX_PAGINAS_CANCELAMENTOS; pagina++) {
+			const qs = new URLSearchParams({
+				statusMemberMembership: String(STATUS_CONTRATO_CANCELADO),
+				cancelDateStart: inicio.toISOString(),
+				cancelDateEnd: fim.toISOString(),
+				take: String(CONTRATO_PAGE_SIZE),
+				skip: String(skip),
+			});
+
+			const url = `${EVO_API_BASE}/api/v3/membermembership?${qs.toString()}`;
+			const batch = await fetchJsonEVO<ContratoCanceladoRaw[]>(url);
+
+			if (!Array.isArray(batch) || batch.length === 0) break;
+
+			for (const contrato of batch) {
+				if (
+					contrato.statusMemberMembership !== undefined &&
+					contrato.statusMemberMembership !== STATUS_CONTRATO_CANCELADO
+				) {
+					continue;
+				}
+				if (contrato.idMemberMemberShip != null) {
+					contratos.add(contrato.idMemberMemberShip);
+				} else {
+					semIdentificador++;
+				}
+			}
+
+			if (batch.length < CONTRATO_PAGE_SIZE) break;
+			skip += CONTRATO_PAGE_SIZE;
 		}
 
-		if (res.status === 204 || buffer.byteLength === 0) {
-			return { total: 0 };
-		}
-
-		const total = contarCanceladosDeBuffer(buffer, isExcel(buffer));
-		return { total };
+		return { total: contratos.size + semIdentificador };
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : "Erro desconhecido";
 		return { total: 0, erro: `Erro ao buscar cancelamentos na EVO: ${msg}` };
