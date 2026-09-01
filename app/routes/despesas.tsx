@@ -7,6 +7,7 @@ import {
 	updateDespesa,
 	deleteDespesa,
 } from "~/models/despesas.server";
+import { sincronizarDespesasSalarios } from "~/models/folha-despesas.server";
 import { uploadReciboAndGetUrl } from "~/models/pocketbase.server";
 import { jsonFieldUploadError, jsonFormError } from "~/lib/upload-errors";
 import { despesaCaiNoMesCivil } from "~/lib/despesas-calendar";
@@ -17,6 +18,8 @@ import { DialogEditarDespesa } from "~/components/despesas/dialog-editar-despesa
 import type { Despesa } from "~/components/columns-desp";
 
 export async function loader() {
+	// Garante que o lançamento de salários do mês reflita a folha paga.
+	await sincronizarDespesasSalarios();
 	const despesas = await getDespesas();
 	return { despesas };
 }

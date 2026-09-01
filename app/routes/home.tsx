@@ -55,6 +55,7 @@ import {
 	ChartTooltip,
 	ChartTooltipContent,
 } from "~/components/ui/chart";
+import { sincronizarDespesasSalarios } from "~/models/folha-despesas.server";
 
 const MESES_NOME = [
 	"Jan",
@@ -130,6 +131,9 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
+	// Salários pagos na folha entram nas despesas do mês antes de somar os KPIs.
+	await sincronizarDespesasSalarios();
+
 	const url = new URL(request.url);
 	const mesParam = url.searchParams.get("mes");
 	const anoParam = url.searchParams.get("ano");

@@ -34,6 +34,10 @@ model despesas {
     tipo        String?
     boleto_path String?
     recibo_path String?
+    /// Mês da folha ("YYYY-MM") que originou esta despesa. Marca o lançamento de
+    /// salários mantido em sincronia com o total pago na folha do mês — ver
+    /// `app/models/folha-despesas.server.ts`. Ausente em despesas manuais.
+    origem_folha_mes String?
 
     @@map("despesas")
 }

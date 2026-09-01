@@ -44,6 +44,7 @@ import {
 	getFolhasComSalariosUltimos3Meses,
 	getMesAtual,
 } from "~/models/folha.server";
+import { sincronizarDespesasSalarios } from "~/models/folha-despesas.server";
 import {
 	Bar,
 	BarChart,
@@ -105,6 +106,8 @@ function formatarMoeda(valor: number | null | undefined): string {
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
+	// Lança/atualiza em despesas o total de salários pagos de cada mês recente.
+	await sincronizarDespesasSalarios();
 	const { folhas, totalSalariosPagosMesAtual } =
 		await getFolhasComSalariosUltimos3Meses();
 	return { folhas, totalSalariosPagosMesAtual };
@@ -513,6 +516,9 @@ export default function Folha() {
 						</p>
 						<p className='text-lg font-semibold text-green-600'>
 							{formatarMoeda(totalSalariosPagosMesAtual)}
+						</p>
+						<p className='text-[10px] text-stone-400'>
+							lançado automaticamente em Despesas
 						</p>
 					</div>
 				</div>
