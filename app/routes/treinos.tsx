@@ -1,4 +1,4 @@
-import { CalendarPlus, FileDown, Plus } from "lucide-react";
+import { CalendarPlus, ChevronDown, FileDown, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFetcher, useLoaderData } from "react-router";
 import type { Route } from "./+types/treinos";
@@ -18,6 +18,13 @@ import {
 } from "~/constants/treinos";
 import { toTitleCase } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "~/components/ui/dropdown-menu";
+import { LAYOUTS_TREINO } from "~/components/treinos/layouts";
 import {
 	Combobox,
 	ComboboxContent,
@@ -546,20 +553,28 @@ export default function Treinos() {
 												: "Cadastrar na semana atual"}
 										</Button>
 									</fetcherSemana.Form>
-									<Button
-										variant='outline'
-										size='sm'
-										asChild
-									>
-										<a
-											href={`/treinos/pdf?ciclo=${encodeURIComponent(filtroCiclo)}&treino=${encodeURIComponent(filtroTreino)}`}
-											target='_blank'
-											rel='noopener noreferrer'
-										>
-											<FileDown className='mr-1 size-4' />
-											Gerar PDF
-										</a>
-									</Button>
+									<DropdownMenu>
+										<DropdownMenuTrigger asChild>
+											<Button variant='outline' size='sm'>
+												<FileDown className='mr-1 size-4' />
+												Gerar PDF
+												<ChevronDown className='ml-1 size-4' />
+											</Button>
+										</DropdownMenuTrigger>
+										<DropdownMenuContent align='end'>
+											{LAYOUTS_TREINO.map((l) => (
+												<DropdownMenuItem key={l.id} asChild>
+													<a
+														href={`/treinos/pdf?ciclo=${encodeURIComponent(filtroCiclo)}&treino=${encodeURIComponent(filtroTreino)}&layout=${l.id}`}
+														target='_blank'
+														rel='noopener noreferrer'
+													>
+														{l.nome}
+													</a>
+												</DropdownMenuItem>
+											))}
+										</DropdownMenuContent>
+									</DropdownMenu>
 								</>
 							)}
 						</div>

@@ -1,12 +1,16 @@
 import path from "node:path";
 import type { LoaderFunctionArgs } from "react-router";
 import { getBancoTreinosByCicloTreino } from "~/models/banco_treino.server";
-import { renderTreinoPdfToBuffer } from "~/components/treinos/folha-treino-pdf";
+import {
+	parseLayoutTreino,
+	renderTreinoPdfToBuffer,
+} from "~/components/treinos/folha-treino-pdf";
 
 export async function loader({ request }: LoaderFunctionArgs) {
 	const url = new URL(request.url);
 	const ciclo = url.searchParams.get("ciclo");
 	const treino = url.searchParams.get("treino");
+	const layout = parseLayoutTreino(url.searchParams.get("layout"));
 
 	if (!ciclo?.trim() || !treino?.trim()) {
 		return new Response("Parâmetros ciclo e treino são obrigatórios", {
@@ -33,7 +37,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
 	const publicDir = path.join(process.cwd(), "public");
 	const logoSrc = path.join(publicDir, "logopng.png");
 	const bolasSrc = path.join(publicDir, "bolaspng.png");
-	const rotateCcwSrc = path.join(publicDir, "rotate-ccw.png");
 
 	const buffer = await renderTreinoPdfToBuffer(
 		grupos,
@@ -41,12 +44,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
 		treino.trim(),
 		logoSrc,
 		bolasSrc,
-		rotateCcwSrc,
+		layout,
 	);
 	const body = new Uint8Array(buffer);
 
 	const treinoNorm = treino.trim().replace(/\s+/g, "");
-	const filename = `treino_${treinoNorm}_${ciclo.trim().replace(/\s+/g, "_")}.pdf`;
+	const filename = `treino_${treinoNorm}_${ciclo.trim().replace(/\s+/g, "_")}_${layout}.pdf`;
 
 	return new Response(body, {
 		headers: {
