@@ -169,7 +169,7 @@ function Legenda({
 				marginTop: 14,
 				padding: LEG_PAD,
 				borderWidth: 2,
-				borderColor: TINTA,
+				borderColor: LARANJA,
 				borderRadius: 8,
 				gap: LEG_GAP,
 			}}
@@ -199,7 +199,10 @@ function Legenda({
 	);
 }
 
-/** quadradinho laranja com a letra do protocolo */
+/** fundo do selo do protocolo; a letra vai em preto para ler de longe */
+const SELO_FUNDO = LARANJA;
+
+/** quadradinho com a letra do protocolo */
 function Selo({ letra, tamanho }: { letra: string; tamanho: number }) {
 	return (
 		<View
@@ -207,14 +210,14 @@ function Selo({ letra, tamanho }: { letra: string; tamanho: number }) {
 				width: tamanho,
 				height: tamanho,
 				borderRadius: tamanho * 0.18,
-				backgroundColor: TINTA,
+				backgroundColor: SELO_FUNDO,
 				alignItems: "center",
 				justifyContent: "center",
 			}}
 		>
 			<Text
 				style={{
-					color: "#ffffff",
+					color: TINTA,
 					fontFamily: "Helvetica-Bold",
 					fontSize: tamanho * 0.62,
 				}}
@@ -259,7 +262,7 @@ const base = StyleSheet.create({
 	logoImg: { height: 30, width: 150 },
 	subtitulo: {
 		fontSize: 12,
-		color: TINTA,
+		color: LARANJA,
 		fontFamily: "Helvetica-Bold",
 		letterSpacing: 2,
 		textTransform: "uppercase",
@@ -274,7 +277,7 @@ const base = StyleSheet.create({
 	regua: {
 		height: 5,
 		width: 80,
-		backgroundColor: TINTA,
+		backgroundColor: LARANJA,
 		marginTop: 8,
 		marginBottom: 3,
 	},
@@ -662,7 +665,7 @@ function PaginaContraste(props: Comum) {
 								width: m.numW,
 								fontFamily: "Helvetica-Bold",
 								fontSize: fs,
-								color: TINTA,
+								color: LARANJA,
 							}}
 						>
 							{i + 1}
