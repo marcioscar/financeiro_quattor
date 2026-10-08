@@ -210,7 +210,7 @@ export async function action({ request }: Route.ActionArgs) {
 				return { error: "Nenhum treino encontrado para este ciclo e treino" };
 			}
 
-			const { semana, criados, atualizados } =
+			const { semana, ano, criados, atualizados } =
 				await cadastrarTreinosNaSemanaFromBanco(bancoTreinos);
 
 			const partes: string[] = [];
@@ -223,7 +223,7 @@ export async function action({ request }: Route.ActionArgs) {
 
 			const message =
 				partes.length > 0
-					? `${partes.join(", ")} na semana ${semana}`
+					? `${partes.join(", ")} na semana ${semana}/${ano}`
 					: "Nenhum grupo processado.";
 
 			return { success: true, message };

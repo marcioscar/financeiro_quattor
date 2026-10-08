@@ -16,15 +16,18 @@ type ExercicioTreinos = {
 	carga?: string | null;
 };
 
-function getSemanaAtual(): number {
-	const d = new Date();
+/** semana ISO 8601 de hoje e o ano ISO a que ela pertence */
+export function getSemanaAtual(hoje = new Date()): { semana: number; ano: number } {
+	const d = new Date(hoje);
 	d.setHours(0, 0, 0, 0);
 	const day = d.getDay() || 7;
+	// a quinta-feira da semana define o ano ISO (29/12 pode ser semana 1 do ano seguinte)
 	d.setDate(d.getDate() + 4 - day);
 	const yearStart = new Date(d.getFullYear(), 0, 1);
-	return Math.ceil(
+	const semana = Math.ceil(
 		((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7,
 	);
+	return { semana, ano: d.getFullYear() };
 }
 
 function converterParaExercicioTreinos(ex: ExercicioBancoTreino): ExercicioTreinos {
@@ -38,9 +41,13 @@ function converterParaExercicioTreinos(ex: ExercicioBancoTreino): ExercicioTrein
 	};
 }
 
-export async function findTreinoByGrupoSemana(grupo: string, semana: number) {
+export async function findTreinoByGrupoSemana(
+	grupo: string,
+	semana: number,
+	ano: number,
+) {
 	return db.treinos.findFirst({
-		where: { grupo, semana },
+		where: { grupo, semana, ano },
 	});
 }
 
@@ -50,7 +57,7 @@ export async function cadastrarTreinosNaSemanaFromBanco(
 		exercicios: ExercicioBancoTreino[];
 	}>,
 ) {
-	const semana = getSemanaAtual();
+	const { semana, ano } = getSemanaAtual();
 	const criados: string[] = [];
 	const atualizados: string[] = [];
 
@@ -59,7 +66,7 @@ export async function cadastrarTreinosNaSemanaFromBanco(
 		if (!grupo || !bt.exercicios?.length) continue;
 
 		const exercicios = bt.exercicios.map(converterParaExercicioTreinos);
-		const existente = await findTreinoByGrupoSemana(grupo, semana);
+		const existente = await findTreinoByGrupoSemana(grupo, semana, ano);
 
 		if (existente) {
 			await db.treinos.update({
@@ -69,11 +76,11 @@ export async function cadastrarTreinosNaSemanaFromBanco(
 			atualizados.push(grupo);
 		} else {
 			const created = await db.treinos.create({
-				data: { grupo, semana, exercicios },
+				data: { grupo, semana, ano, exercicios },
 			});
 			criados.push(created.id);
 		}
 	}
 
-	return { semana, criados, atualizados };
+	return { semana, ano, criados, atualizados };
 }

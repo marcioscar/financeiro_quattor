@@ -99,10 +99,14 @@ type ExercicioBancoTreino {
     repeticoes String?
 }
 
+/// `semana` e `ano` são a semana ISO 8601 e o ano ISO dela (a última semana
+/// de dezembro pode ser a semana 1 do ano seguinte). `ano` vazio = registro
+/// antigo, de antes de o ano passar a ser gravado.
 model treinos {
     id         String      @id @default(auto()) @map("_id") @db.ObjectId
     grupo      String
     semana     Int
+    ano        Int?
     exercicios Exercicio[]
 }
 
