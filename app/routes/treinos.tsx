@@ -1,5 +1,5 @@
-import { CalendarPlus, ChevronDown, FileDown, Plus } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Check, Copy, Pencil } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useFetcher, useLoaderData } from "react-router";
 import type { Route } from "./+types/treinos";
 import {
@@ -16,26 +16,8 @@ import {
 	GRUPOS,
 	TREINOS_OPCOES,
 } from "~/constants/treinos";
-import { toTitleCase } from "~/lib/utils";
+import { cn, toTitleCase } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "~/components/ui/dropdown-menu";
-import { LAYOUTS_TREINO } from "~/components/treinos/layouts";
-import {
-	Combobox,
-	ComboboxContent,
-	ComboboxEmpty,
-	ComboboxInput,
-	ComboboxItem,
-	ComboboxList,
-	useComboboxAnchor,
-} from "~/components/ui/combobox";
-import { Field, FieldLabel } from "~/components/ui/field";
-import { Input } from "~/components/ui/input";
 import {
 	Select,
 	SelectContent,
@@ -45,15 +27,21 @@ import {
 } from "~/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 
-const GRUPO_ITEMS = GRUPOS.map((g) => ({ value: g, label: g }));
-
 export async function loader() {
 	const bancoTreinos = await getBancoTreinos();
 	const [videoItems, defaultVideo] = await Promise.all([
 		getTreinosVideoItems(),
 		getTreinosDefaultVideo(),
 	]);
-	return { bancoTreinos, videoItems, defaultVideo };
+	return {
+		bancoTreinos,
+		sugestoes: {
+			videoItems,
+			defaultVideo,
+			catalogo: montarCatalogoExercicios(bancoTreinos, videoItems),
+			repeticoes: repeticoesFrequentes(bancoTreinos),
+		},
+	};
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -240,116 +228,143 @@ export async function action({ request }: Route.ActionArgs) {
 	return null;
 }
 
-import { DataTable } from "~/components/desp-table";
-import {
-	getColumnsTreinos,
-	type BancoTreinoRow,
-} from "~/components/treinos/columns-treinos";
+import type { BancoTreinoRow } from "~/components/treinos/columns-treinos";
+import { TreinosCadastrados } from "~/components/treinos/treinos-cadastrados";
 import { DialogEditarTreino } from "~/components/treinos/dialog-editar-treino";
+import type { ExercicioForm } from "~/components/treinos/linha-exercicio";
 import {
-	LinhaExercicio,
-	type ExercicioForm,
-} from "~/components/treinos/linha-exercicio";
+	ListaExercicios,
+	exercicioVazio,
+} from "~/components/treinos/lista-exercicios";
 import {
 	getTreinosDefaultVideo,
 	getTreinosVideoItems,
+	montarCatalogoExercicios,
+	repeticoesFrequentes,
 } from "~/lib/treinos-videos.server";
 
-const exercicioInicial: ExercicioForm = {
-	exercicio: "",
-	repeticoes: "",
-	observacao: "",
-	video: "",
-};
+/** "Treino 5" e "Treino5" são o mesmo treino */
+const treinoNorm = (v: string | null | undefined) => (v ?? "").replace(/\s+/g, "");
+const numeroCiclo = (c: string | null | undefined) =>
+	Number(/\d+/.exec(c ?? "")?.[0] ?? 0);
+
+function Passo({
+	numero,
+	titulo,
+	children,
+}: {
+	numero: number;
+	titulo: string;
+	children: React.ReactNode;
+}) {
+	return (
+		<div className='space-y-2'>
+			<div className='flex items-center gap-2 text-sm font-medium'>
+				<span className='flex size-5 items-center justify-center rounded-full bg-orange-500 text-[11px] font-bold text-white'>
+					{numero}
+				</span>
+				{titulo}
+			</div>
+			{children}
+		</div>
+	);
+}
 
 export default function Treinos() {
-	const { bancoTreinos, videoItems, defaultVideo } = useLoaderData<typeof loader>();
+	const { bancoTreinos, sugestoes } = useLoaderData<typeof loader>();
+	const { defaultVideo } = sugestoes;
 	const fetcher = useFetcher<{
 		error?: string;
 		success?: boolean;
 		message?: string;
 	}>();
-	const fetcherSemana = useFetcher<{
-		error?: string;
-		success?: boolean;
-		message?: string;
-	}>();
 	const submittedRef = useRef(false);
-	const anchorGrupoRef = useComboboxAnchor();
 
-	const [ciclo, setCiclo] = useState("");
+	// começa no ciclo mais recente já cadastrado
+	const cicloMaisRecente = useMemo(() => {
+		const n = Math.max(0, ...bancoTreinos.map((b) => numeroCiclo(b.ciclo)));
+		return CICLOS_OPCOES.find((c) => numeroCiclo(c) === n) ?? "";
+	}, [bancoTreinos]);
+
+	const [ciclo, setCiclo] = useState<string>(cicloMaisRecente);
 	const [treino, setTreino] = useState("");
-	const [grupo, setGrupo] = useState<{ value: string; label: string } | null>(
-		null,
-	);
+	const [grupo, setGrupo] = useState("");
 	const [exercicios, setExercicios] = useState<ExercicioForm[]>([
-		{ ...exercicioInicial, video: defaultVideo },
+		exercicioVazio(defaultVideo),
 	]);
-	const [filtroCiclo, setFiltroCiclo] = useState<string>("todos");
-	const [filtroTreino, setFiltroTreino] = useState<string>("todos");
+	const [salvoMsg, setSalvoMsg] = useState("");
 	const [editingTreino, setEditingTreino] = useState<BancoTreinoRow | null>(
 		null,
 	);
+	const formRef = useRef<HTMLDivElement>(null);
 
-	const filteredTreinos = useMemo(() => {
-		let result = [...bancoTreinos] as BancoTreinoRow[];
-		if (filtroCiclo && filtroCiclo !== "todos") {
-			result = result.filter((t) => (t.ciclo ?? "") === filtroCiclo);
+	/** grupos já cadastrados no ciclo/treino escolhidos */
+	const existentes = useMemo(() => {
+		const m = new Map<string, BancoTreinoRow>();
+		if (!ciclo || !treino) return m;
+		for (const b of bancoTreinos as BancoTreinoRow[]) {
+			if (b.ciclo === ciclo && treinoNorm(b.treino) === treinoNorm(treino) && b.grupo) {
+				m.set(b.grupo, b);
+			}
 		}
-		if (filtroTreino && filtroTreino !== "todos") {
-			const treinoNorm = (v: string) => (v ?? "").replace(/\s+/g, "");
-			result = result.filter(
-				(t) => treinoNorm(t.treino ?? "") === treinoNorm(filtroTreino),
-			);
-		}
-		return result;
-	}, [bancoTreinos, filtroCiclo, filtroTreino]);
+		return m;
+	}, [bancoTreinos, ciclo, treino]);
 
-	const resetExercicios = useCallback(() => {
-		setExercicios([{ ...exercicioInicial, video: defaultVideo }]);
-	}, [defaultVideo]);
+	const grupoExistente = grupo ? existentes.get(grupo) : undefined;
 
-	const resetForm = useCallback(() => {
-		setCiclo("");
-		setTreino("");
-		setGrupo(null);
-		setExercicios([{ ...exercicioInicial, video: defaultVideo }]);
-	}, [defaultVideo]);
+	/** mesmo treino e grupo no ciclo anterior mais recente, para copiar */
+	const anterior = useMemo(() => {
+		if (!ciclo || !treino || !grupo || grupoExistente) return undefined;
+		return (bancoTreinos as BancoTreinoRow[])
+			.filter(
+				(b) =>
+					b.grupo === grupo &&
+					treinoNorm(b.treino) === treinoNorm(treino) &&
+					numeroCiclo(b.ciclo) < numeroCiclo(ciclo) &&
+					b.exercicios?.length,
+			)
+			.sort((a, b) => numeroCiclo(b.ciclo) - numeroCiclo(a.ciclo))[0];
+	}, [bancoTreinos, ciclo, treino, grupo, grupoExistente]);
 
-	const addExercicio = useCallback(() => {
-		setExercicios((prev) => [
-			...prev,
-			{ ...exercicioInicial, video: defaultVideo },
+	function copiarAnterior() {
+		if (!anterior) return;
+		const copiados = anterior.exercicios.map((ex) => ({
+			exercicio: ex.exercicio ?? "",
+			repeticoes: ex.repeticoes ?? "",
+			observacao: ex.observacao ?? "",
+			video: ex.video || defaultVideo,
+			videoManual: true,
+		}));
+		// não apaga o que já foi digitado: os copiados entram depois
+		setExercicios((atuais) => [
+			...atuais.filter((ex) => ex.exercicio.trim()),
+			...copiados,
 		]);
-	}, [defaultVideo]);
+	}
 
-	const updateExercicio = useCallback((index: number, ex: ExercicioForm) => {
-		setExercicios((prev) => {
-			const next = [...prev];
-			next[index] = ex;
-			return next;
-		});
-	}, []);
+	function limpar() {
+		setGrupo("");
+		setExercicios([exercicioVazio(defaultVideo)]);
+	}
 
-	const removeExercicio = useCallback((index: number) => {
-		setExercicios((prev) => {
-			if (prev.length <= 1) return prev;
-			return prev.filter((_, i) => i !== index);
-		});
-	}, []);
+	const preenchidos = exercicios.filter((ex) => ex.exercicio.trim());
 
 	function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
 		e.preventDefault();
-		if (!ciclo || !treino || !grupo?.value) return;
+		if (!ciclo || !treino || !grupo || preenchidos.length === 0) return;
 
-		const form = e.currentTarget;
 		const formData = new FormData();
 		formData.append("intent", "criar");
 		formData.append("ciclo", ciclo);
 		formData.append("treino", treino);
-		formData.append("grupo", grupo.value);
-		formData.append("exercicios", JSON.stringify(exercicios));
-
+		formData.append("grupo", grupo);
+		formData.append(
+			"exercicios",
+			JSON.stringify(preenchidos.map(({ videoManual: _, ...ex }) => ex)),
+		);
+		setSalvoMsg(
+			`${grupo} salvo em ${ciclo} / ${treino} (${preenchidos.length} exercício${preenchidos.length > 1 ? "s" : ""})`,
+		);
 		fetcher.submit(formData, { method: "post" });
 	}
 
@@ -358,36 +373,31 @@ export default function Treinos() {
 		if (fetcher.state === "idle" && submittedRef.current) {
 			submittedRef.current = false;
 			if (fetcher.data?.success) {
-				resetExercicios();
+				// mantém ciclo e treino: o próximo passo é cadastrar outro grupo
+				setGrupo("");
+				setExercicios([exercicioVazio(defaultVideo)]);
 			}
 		}
-	}, [fetcher.state, fetcher.data, resetExercicios]);
+	}, [fetcher.state, fetcher.data, defaultVideo]);
 
 	const busy = fetcher.state !== "idle";
-	const isValid =
-		ciclo &&
-		treino &&
-		grupo?.value &&
-		exercicios.some((ex) => ex.exercicio.trim());
+	const isValid = ciclo && treino && grupo && preenchidos.length > 0;
+	const mostrarSalvo =
+		fetcher.state === "idle" && fetcher.data?.success && !grupo && salvoMsg;
 
 	return (
 		<div className='container mx-auto space-y-6 py-6'>
 			<h1 className='text-2xl font-bold text-orange-500'>Banco de Treinos</h1>
 
-			<Card>
+			<Card ref={formRef} className='scroll-mt-4'>
 				<CardHeader>
 					<CardTitle>Cadastrar treino</CardTitle>
 				</CardHeader>
 				<CardContent>
 					<fetcher.Form onSubmit={handleSubmit} className='space-y-6'>
-						<div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
-							<Field>
-								<FieldLabel>Ciclo</FieldLabel>
-								<Select
-									value={ciclo}
-									onValueChange={setCiclo}
-									disabled={busy}
-									required>
+						<div className='grid gap-6 lg:grid-cols-[200px_1fr]'>
+							<Passo numero={1} titulo='Ciclo'>
+								<Select value={ciclo} onValueChange={setCiclo} disabled={busy}>
 									<SelectTrigger className='w-full'>
 										<SelectValue placeholder='Selecione o ciclo' />
 									</SelectTrigger>
@@ -399,212 +409,160 @@ export default function Treinos() {
 										))}
 									</SelectContent>
 								</Select>
-							</Field>
+							</Passo>
 
-							<Field>
-								<FieldLabel>Nome do treino</FieldLabel>
-								<Select
-									value={treino}
-									onValueChange={setTreino}
-									disabled={busy}
-									required>
-									<SelectTrigger className='w-full'>
-										<SelectValue placeholder='Treino 1-6' />
-									</SelectTrigger>
-									<SelectContent>
-										{TREINOS_OPCOES.map((t) => (
-											<SelectItem key={t} value={t}>
-												{t}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
-							</Field>
-
-							<div ref={anchorGrupoRef} className='space-y-2'>
-								<Field>
-									<FieldLabel>Grupo</FieldLabel>
-									<Combobox
-										value={grupo}
-										onValueChange={setGrupo}
-										items={GRUPO_ITEMS}>
-										<ComboboxInput
-											placeholder='Buscar grupo...'
-											showClear
+							<Passo numero={2} titulo='Treino'>
+								<div className='flex flex-wrap gap-1.5'>
+									{TREINOS_OPCOES.map((t) => (
+										<Button
+											key={t}
+											type='button'
+											size='sm'
+											variant={treino === t ? "default" : "outline"}
+											onClick={() => setTreino(t)}
 											disabled={busy}
-										/>
-										<ComboboxContent anchor={anchorGrupoRef}>
-											<ComboboxList>
-												{(item) => (
-													<ComboboxItem key={item.value} value={item}>
-														{item.label}
-													</ComboboxItem>
-												)}
-											</ComboboxList>
-											<ComboboxEmpty>Nenhum grupo encontrado</ComboboxEmpty>
-										</ComboboxContent>
-									</Combobox>
-								</Field>
-							</div>
-
+											className={cn(
+												"min-w-20",
+												treino === t && "bg-orange-500 hover:bg-orange-600",
+											)}>
+											{t}
+										</Button>
+									))}
+								</div>
+							</Passo>
 						</div>
 
-						<div className='space-y-4'>
-							<div className='flex items-center justify-between'>
-								<FieldLabel>Exercícios</FieldLabel>
+						<Passo numero={3} titulo='Grupo muscular'>
+							{!treino && (
+								<p className='text-xs text-muted-foreground'>
+									Escolha o treino para ver quais grupos já foram cadastrados.
+								</p>
+							)}
+							<div className='flex flex-wrap gap-1.5'>
+								{GRUPOS.map((g) => {
+									const ja = existentes.get(g);
+									return (
+										<Button
+											key={g}
+											type='button'
+											size='sm'
+											variant={grupo === g ? "default" : "outline"}
+											onClick={() => setGrupo(g)}
+											disabled={busy}
+											className={cn(
+												"h-8 text-xs",
+												grupo === g && "bg-orange-500 hover:bg-orange-600",
+												ja && grupo !== g && "border-green-300 bg-green-50 text-green-800 hover:bg-green-100",
+											)}>
+											{ja && <Check className='size-3.5' />}
+											{g}
+											{ja && (
+												<span className='text-[10px] opacity-70'>
+													{ja.exercicios.length}
+												</span>
+											)}
+										</Button>
+									);
+								})}
+							</div>
+						</Passo>
+
+						{grupoExistente && (
+							<div className='flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900'>
+								<span>
+									<strong>{grupo}</strong> já tem {grupoExistente.exercicios.length}{" "}
+									exercício(s) neste treino. Os que você cadastrar aqui serão
+									adicionados ao final.
+								</span>
 								<Button
 									type='button'
-									variant='outline'
 									size='sm'
-									onClick={addExercicio}
-									disabled={busy}>
-									<Plus className='mr-1 size-4' />
-									Adicionar exercício
+									variant='outline'
+									onClick={() => setEditingTreino(grupoExistente)}>
+									<Pencil className='mr-1 size-3.5' />
+									Editar os existentes
 								</Button>
 							</div>
-							<div className='space-y-4'>
-								{exercicios.map((ex, i) => (
-									<LinhaExercicio
-										key={i}
-										exercicio={ex}
-										videoItems={videoItems}
-										onChange={(e) => updateExercicio(i, e)}
-										onRemove={() => removeExercicio(i)}
-										disabled={busy}
-									/>
-								))}
+						)}
+
+						{anterior && (
+							<div className='flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm'>
+								<span className='text-muted-foreground'>
+									Quer partir do {anterior.ciclo}? {grupo} tinha{" "}
+									{anterior.exercicios.length} exercício(s) lá.
+								</span>
+								<Button
+									type='button'
+									size='sm'
+									variant='outline'
+									onClick={copiarAnterior}
+									disabled={busy}>
+									<Copy className='mr-1 size-3.5' />
+									Copiar do {anterior.ciclo}
+								</Button>
 							</div>
-						</div>
+						)}
+
+						<Passo numero={4} titulo='Exercícios'>
+							<p className='text-xs text-muted-foreground'>
+								O vídeo é escolhido sozinho pelo nome do exercício. Se não for o
+								certo, é só trocar.
+							</p>
+							<ListaExercicios
+								exercicios={exercicios}
+								onChange={setExercicios}
+								sugestoes={sugestoes}
+								disabled={busy}
+							/>
+						</Passo>
 
 						{fetcher.data?.error && (
 							<p className='text-sm text-destructive'>{fetcher.data.error}</p>
 						)}
+						{mostrarSalvo && (
+							<p className='flex items-center gap-1 text-sm text-green-700'>
+								<Check className='size-4' />
+								{salvoMsg}
+							</p>
+						)}
 
 						<div className='flex justify-end gap-2'>
-							<Button
-								type='button'
-								variant='outline'
-								onClick={resetForm}
-								disabled={busy}>
+							<Button type='button' variant='outline' onClick={limpar} disabled={busy}>
 								Limpar
 							</Button>
-							<Button type='submit' disabled={busy || !isValid}>
-								{busy ? "Salvando..." : "Cadastrar treino"}
+							<Button
+								type='submit'
+								disabled={busy || !isValid}
+								className='bg-orange-500 hover:bg-orange-600'>
+								{busy
+									? "Salvando..."
+									: preenchidos.length > 0
+										? `Cadastrar ${preenchidos.length} exercício${preenchidos.length > 1 ? "s" : ""}`
+										: "Cadastrar treino"}
 							</Button>
 						</div>
 					</fetcher.Form>
 				</CardContent>
 			</Card>
 
-			{bancoTreinos.length > 0 && (
-				<Card>
-					<CardHeader>
-						<CardTitle>Treinos cadastrados</CardTitle>
-					</CardHeader>
-					<CardContent>
-						<div className='mb-4 flex flex-wrap items-center gap-2'>
-							<Select
-								value={filtroCiclo}
-								onValueChange={setFiltroCiclo}
-							>
-								<SelectTrigger className='w-[180px]'>
-									<SelectValue placeholder='Filtrar por ciclo' />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value='todos'>Todos os ciclos</SelectItem>
-									{CICLOS_OPCOES.map((c) => (
-										<SelectItem key={c} value={c}>
-											{c}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-							<Select
-								value={filtroTreino}
-								onValueChange={setFiltroTreino}
-							>
-								<SelectTrigger className='w-[180px]'>
-									<SelectValue placeholder='Filtrar por treino' />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value='todos'>Todos os treinos</SelectItem>
-									{TREINOS_OPCOES.map((t) => (
-										<SelectItem key={t} value={t}>
-											{t}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-							{filtroCiclo !== "todos" && filtroTreino !== "todos" && (
-								<>
-									<fetcherSemana.Form method='post'>
-										<input type='hidden' name='intent' value='cadastrarSemana' />
-										<input type='hidden' name='ciclo' value={filtroCiclo} />
-										<input type='hidden' name='treino' value={filtroTreino} />
-										<Button
-											type='submit'
-											variant='default'
-											size='sm'
-											disabled={fetcherSemana.state !== "idle"}
-										>
-											<CalendarPlus className='mr-1 size-4' />
-											{fetcherSemana.state !== "idle"
-												? "Cadastrando..."
-												: "Cadastrar na semana atual"}
-										</Button>
-									</fetcherSemana.Form>
-									<DropdownMenu>
-										<DropdownMenuTrigger asChild>
-											<Button variant='outline' size='sm'>
-												<FileDown className='mr-1 size-4' />
-												Gerar PDF
-												<ChevronDown className='ml-1 size-4' />
-											</Button>
-										</DropdownMenuTrigger>
-										<DropdownMenuContent align='end'>
-											{LAYOUTS_TREINO.map((l) => (
-												<DropdownMenuItem key={l.id} asChild>
-													<a
-														href={`/treinos/pdf?ciclo=${encodeURIComponent(filtroCiclo)}&treino=${encodeURIComponent(filtroTreino)}&layout=${l.id}`}
-														target='_blank'
-														rel='noopener noreferrer'
-													>
-														{l.nome}
-													</a>
-												</DropdownMenuItem>
-											))}
-										</DropdownMenuContent>
-									</DropdownMenu>
-								</>
-							)}
-						</div>
-						{(fetcherSemana.data?.error || fetcherSemana.data?.message) && (
-							<p
-								className={`mb-2 text-sm ${
-									fetcherSemana.data.error
-										? "text-destructive"
-										: "text-muted-foreground"
-								}`}
-							>
-								{fetcherSemana.data.error ?? fetcherSemana.data.message}
-							</p>
-						)}
-						<DataTable
-							columns={getColumnsTreinos(setEditingTreino)}
-							data={filteredTreinos}
-							getRowId={(row) => row.id}
-							onRowClick={setEditingTreino}
-							filterColumn=''
-						/>
-					</CardContent>
-				</Card>
-			)}
+			<TreinosCadastrados
+				bancoTreinos={bancoTreinos as BancoTreinoRow[]}
+				videoItems={sugestoes.videoItems}
+				cicloInicial={cicloMaisRecente}
+				selecao={{ ciclo, treino }}
+				onEditar={setEditingTreino}
+				onCadastrarGrupo={(c, t, g) => {
+					setCiclo(c);
+					setTreino(t);
+					setGrupo(g);
+					formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+				}}
+			/>
 
 			{editingTreino && (
 				<DialogEditarTreino
 					treino={editingTreino}
-					videoItems={videoItems}
-					defaultVideo={defaultVideo}
+					sugestoes={sugestoes}
 					open={!!editingTreino}
 					onClose={() => setEditingTreino(null)}
 				/>

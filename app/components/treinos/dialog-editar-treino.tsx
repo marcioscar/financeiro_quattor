@@ -1,5 +1,4 @@
-import { Plus } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useFetcher } from "react-router";
 import { Button } from "~/components/ui/button";
 import {
@@ -9,54 +8,49 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "~/components/ui/dialog";
-import { FieldLabel } from "~/components/ui/field";
-import {
-	LinhaExercicio,
-	type ExercicioForm,
+import type {
+	ExercicioForm,
+	SugestoesTreino,
 } from "~/components/treinos/linha-exercicio";
+import {
+	ListaExercicios,
+	exercicioVazio,
+} from "~/components/treinos/lista-exercicios";
 import type { BancoTreinoRow } from "~/components/treinos/columns-treinos";
+import { isVideoPlaceholder, sugerirVideo } from "~/lib/treinos-sugestoes";
 
-const exercicioInicial: ExercicioForm = {
-	exercicio: "",
-	repeticoes: "",
-	observacao: "",
-	video: "",
-};
-
-function toExercicioForm(ex: Record<string, unknown> | null | undefined): ExercicioForm {
-	if (!ex) return { ...exercicioInicial };
+function toExercicioForm(
+	ex: Record<string, unknown>,
+	sugestoes: SugestoesTreino,
+): ExercicioForm {
+	const exercicio = (ex.exercicio ?? ex.nome ?? "") as string;
+	const video = String(ex.video ?? "").trim();
+	const temVideoReal =
+		!isVideoPlaceholder(video) &&
+		sugestoes.videoItems.some((item) => item.value === video);
 	return {
-		exercicio: (ex.exercicio ?? ex.nome ?? "") as string,
+		exercicio,
 		repeticoes: (ex.repeticoes ?? ex.Repeticoes ?? "") as string,
 		observacao: (ex.observacao ?? ex.obs ?? "") as string,
-		video: (ex.video ?? "") as string,
+		// vídeo já salvo é respeitado; exercício ainda "em produção" ganha sugestão
+		video: temVideoReal
+			? video
+			: (sugerirVideo(exercicio, sugestoes.catalogo, sugestoes.videoItems) ??
+				sugestoes.defaultVideo),
+		videoManual: temVideoReal,
 	};
-}
-
-function resolveVideoValue(
-	video: string,
-	videoItems: Array<{ value: string; label: string }>,
-	defaultVideo: string,
-): string {
-	const normalizedVideo = video.trim();
-	if (normalizedVideo && videoItems.some((item) => item.value === normalizedVideo)) {
-		return normalizedVideo;
-	}
-	return defaultVideo;
 }
 
 type Props = {
 	treino: BancoTreinoRow | null;
-	videoItems: Array<{ value: string; label: string }>;
-	defaultVideo: string;
+	sugestoes: SugestoesTreino;
 	open: boolean;
 	onClose: () => void;
 };
 
 export function DialogEditarTreino({
 	treino,
-	videoItems,
-	defaultVideo,
+	sugestoes,
 	open,
 	onClose,
 }: Props) {
@@ -66,41 +60,11 @@ export function DialogEditarTreino({
 
 	useEffect(() => {
 		if (treino?.exercicios?.length) {
-			setExercicios(
-				treino.exercicios.map((ex) => {
-					const exercicio = toExercicioForm(ex);
-					return {
-						...exercicio,
-						video: resolveVideoValue(exercicio.video, videoItems, defaultVideo),
-					};
-				}),
-			);
+			setExercicios(treino.exercicios.map((ex) => toExercicioForm(ex, sugestoes)));
 		} else {
-			setExercicios([{ ...exercicioInicial, video: defaultVideo }]);
+			setExercicios([exercicioVazio(sugestoes.defaultVideo)]);
 		}
-	}, [treino, open, defaultVideo, videoItems]);
-
-	const addExercicio = useCallback(() => {
-		setExercicios((prev) => [
-			...prev,
-			{ ...exercicioInicial, video: defaultVideo },
-		]);
-	}, [defaultVideo]);
-
-	const updateExercicio = useCallback((index: number, ex: ExercicioForm) => {
-		setExercicios((prev) => {
-			const next = [...prev];
-			next[index] = ex;
-			return next;
-		});
-	}, []);
-
-	const removeExercicio = useCallback((index: number) => {
-		setExercicios((prev) => {
-			if (prev.length <= 1) return prev;
-			return prev.filter((_, i) => i !== index);
-		});
-	}, []);
+	}, [treino, open, sugestoes]);
 
 	function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
 		e.preventDefault();
@@ -109,7 +73,14 @@ export function DialogEditarTreino({
 		const formData = new FormData();
 		formData.append("intent", "editar");
 		formData.append("id", treino.id);
-		formData.append("exercicios", JSON.stringify(exercicios));
+		formData.append(
+			"exercicios",
+			JSON.stringify(
+				exercicios
+					.filter((ex) => ex.exercicio.trim())
+					.map(({ videoManual: _, ...ex }) => ex),
+			),
+		);
 
 		fetcher.submit(formData, { method: "post" });
 	}
@@ -131,7 +102,7 @@ export function DialogEditarTreino({
 
 	return (
 		<Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-			<DialogContent className="max-h-[90vh] overflow-y-auto">
+			<DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-5xl">
 				<DialogHeader>
 					<DialogTitle>
 						Editar exercícios — {treino.ciclo ?? "-"} / {treino.treino ?? "-"} /{" "}
@@ -139,33 +110,12 @@ export function DialogEditarTreino({
 					</DialogTitle>
 				</DialogHeader>
 				<fetcher.Form onSubmit={handleSubmit} className="space-y-6">
-					<div className="space-y-4">
-						<div className="flex items-center justify-between">
-							<FieldLabel>Exercícios</FieldLabel>
-							<Button
-								type="button"
-								variant="outline"
-								size="sm"
-								onClick={addExercicio}
-								disabled={busy}
-							>
-								<Plus className="mr-1 size-4" />
-								Adicionar exercício
-							</Button>
-						</div>
-						<div className="space-y-4">
-							{exercicios.map((ex, i) => (
-								<LinhaExercicio
-									key={i}
-									exercicio={ex}
-									videoItems={videoItems}
-									onChange={(e) => updateExercicio(i, e)}
-									onRemove={() => removeExercicio(i)}
-									disabled={busy}
-								/>
-							))}
-						</div>
-					</div>
+					<ListaExercicios
+						exercicios={exercicios}
+						onChange={setExercicios}
+						sugestoes={sugestoes}
+						disabled={busy}
+					/>
 
 					{fetcher.data?.error && (
 						<p className="text-sm text-destructive">{fetcher.data.error}</p>
