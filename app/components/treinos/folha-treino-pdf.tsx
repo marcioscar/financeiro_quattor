@@ -169,7 +169,7 @@ function Legenda({
 				marginTop: 14,
 				padding: LEG_PAD,
 				borderWidth: 2,
-				borderColor: LARANJA,
+				borderColor: TINTA,
 				borderRadius: 8,
 				gap: LEG_GAP,
 			}}
@@ -207,7 +207,7 @@ function Selo({ letra, tamanho }: { letra: string; tamanho: number }) {
 				width: tamanho,
 				height: tamanho,
 				borderRadius: tamanho * 0.18,
-				backgroundColor: LARANJA,
+				backgroundColor: TINTA,
 				alignItems: "center",
 				justifyContent: "center",
 			}}
@@ -259,7 +259,7 @@ const base = StyleSheet.create({
 	logoImg: { height: 30, width: 150 },
 	subtitulo: {
 		fontSize: 12,
-		color: LARANJA,
+		color: TINTA,
 		fontFamily: "Helvetica-Bold",
 		letterSpacing: 2,
 		textTransform: "uppercase",
@@ -274,7 +274,7 @@ const base = StyleSheet.create({
 	regua: {
 		height: 5,
 		width: 80,
-		backgroundColor: LARANJA,
+		backgroundColor: TINTA,
 		marginTop: 8,
 		marginBottom: 3,
 	},
@@ -662,7 +662,7 @@ function PaginaContraste(props: Comum) {
 								width: m.numW,
 								fontFamily: "Helvetica-Bold",
 								fontSize: fs,
-								color: LARANJA,
+								color: TINTA,
 							}}
 						>
 							{i + 1}
