@@ -30,6 +30,7 @@ import {
 	ComboboxList,
 	useComboboxAnchor,
 } from "~/components/ui/combobox";
+import { CardDiferencasSalarios } from "~/components/folha/card-diferencas-salarios";
 import { DialogEditarFuncionario } from "~/components/folha/dialog-editar-funcionario";
 import { DialogEditarSalario } from "~/components/folha/dialog-editar-salario";
 import { DialogNovoFuncionario } from "~/components/folha/dialog-novo-funcionario";
@@ -847,6 +848,8 @@ export default function Folha() {
 						)}
 					</CardContent>
 				</Card>
+
+				<CardDiferencasSalarios folhas={folhas} />
 			</div>
 		</div>
 	);
