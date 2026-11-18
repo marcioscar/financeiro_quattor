@@ -17,6 +17,7 @@ type Salario = {
 	valor?: number | null;
 	pago?: boolean | null;
 	tipo?: string | null;
+	comprovante?: string | null;
 };
 
 type FolhaComSalarios = {
@@ -33,6 +34,7 @@ export type LancamentoFechamento = {
 	/** YYYY-MM-DD */
 	data: string;
 	pago: boolean;
+	comprovante: string | null;
 };
 
 export type LinhaFechamento = {
@@ -176,6 +178,7 @@ function montarLinha(
 					valor: arredondar(doPeriodo.reduce((acc, s) => acc + (s.valor ?? 0), 0)),
 					data: isoData(new Date(doPeriodo[0].data!)),
 					pago: doPeriodo.every((s) => s.pago === true),
+					comprovante: doPeriodo.find((s) => s.comprovante)?.comprovante ?? null,
 				}
 			: null;
 

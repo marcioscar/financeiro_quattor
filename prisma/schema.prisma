@@ -49,6 +49,8 @@ type FolhaSalarios {
     ferias Float?
     fgts   Float?
     pago   Boolean?
+    /// URL do comprovante de pagamento (PocketBase), como nas despesas.
+    comprovante String?
     sal_id String?
     /// "salario" (ou ausente, nos lançamentos antigos), "decimo_1" ou
     /// "decimo_2" — ver `app/lib/folha-tipos.ts`.
