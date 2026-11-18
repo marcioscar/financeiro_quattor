@@ -118,10 +118,15 @@ export async function salvarLancamentos(
 	periodo: MesFechamento,
 	data: Date,
 	pago: boolean,
-	itens: { folhaId: string; valor: number; comprovante?: string }[],
+	itens: {
+		folhaId: string;
+		valor: number;
+		adiantamento?: number;
+		comprovante?: string;
+	}[],
 ): Promise<number> {
 	let salvos = 0;
-	for (const { folhaId, valor, comprovante } of itens) {
+	for (const { folhaId, valor, adiantamento, comprovante } of itens) {
 		const folha = await db.folha.findUniqueOrThrow({ where: { id: folhaId } });
 		const salarios = [...(folha.salarios ?? [])];
 		const indices = salarios
@@ -135,6 +140,7 @@ export async function salvarLancamentos(
 				valor,
 				data,
 				pago,
+				adiantamento: adiantamento || null,
 				comprovante: comprovante ?? null,
 				decimo: null,
 				ferias: null,
@@ -149,6 +155,7 @@ export async function salvarLancamentos(
 				valor,
 				data,
 				pago,
+				adiantamento: adiantamento || null,
 				// Sem arquivo novo, mantém o comprovante que já estava anexado.
 				...(comprovante && { comprovante }),
 			};

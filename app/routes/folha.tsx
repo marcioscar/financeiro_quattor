@@ -197,17 +197,23 @@ export async function action({ request }: Route.ActionArgs) {
 			};
 		}
 
-		let itens: { folhaId: string; valor: number }[];
+		let itens: { folhaId: string; valor: number; adiantamento: number }[];
 		try {
 			const bruto: unknown = JSON.parse(String(formData.get("itens") ?? "[]"));
 			if (!Array.isArray(bruto)) throw new Error();
 			itens = bruto.map((i) => {
 				const valor = Number(i?.valor);
 				if (typeof i?.folhaId !== "string" || !(valor > 0)) throw new Error();
-				return { folhaId: i.folhaId, valor: Math.round(valor * 100) / 100 };
+				const adiantamento = Number(i?.adiantamento ?? 0);
+				if (!(adiantamento >= 0) || adiantamento > valor) throw new Error();
+				return {
+					folhaId: i.folhaId,
+					valor: Math.round(valor * 100) / 100,
+					adiantamento: Math.round(adiantamento * 100) / 100,
+				};
 			});
 		} catch {
-			return { error: "Valores inválidos" };
+			return { error: "Valores inválidos (o adiantamento não pode passar do valor)" };
 		}
 		if (itens.length === 0) return { error: "Selecione ao menos uma pessoa" };
 
@@ -215,6 +221,7 @@ export async function action({ request }: Route.ActionArgs) {
 		const itensComArquivo: {
 			folhaId: string;
 			valor: number;
+			adiantamento: number;
 			comprovante?: string;
 		}[] = [];
 		for (const item of itens) {

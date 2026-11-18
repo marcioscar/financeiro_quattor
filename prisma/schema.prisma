@@ -49,6 +49,8 @@ type FolhaSalarios {
     ferias Float?
     fgts   Float?
     pago   Boolean?
+    /// Vale/adiantamento já dado no mês, descontado do valor a transferir.
+    adiantamento Float?
     /// URL do comprovante de pagamento (PocketBase), como nas despesas.
     comprovante String?
     sal_id String?

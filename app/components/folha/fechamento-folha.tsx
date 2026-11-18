@@ -96,6 +96,17 @@ function parseValor(texto: string): number | null {
 	return Number.isFinite(num) && num > 0 ? Math.round(num * 100) / 100 : null;
 }
 
+/** Vale: vazio vale 0; null se inválido. */
+function parseVale(texto: string): number | null {
+	if (!texto.trim()) return 0;
+	const limpo = texto.trim().replace(/^R\$\s*/, "");
+	const normalizado = limpo.includes(",")
+		? limpo.replace(/\./g, "").replace(",", ".")
+		: limpo;
+	const num = Number(normalizado);
+	return Number.isFinite(num) && num >= 0 ? Math.round(num * 100) / 100 : null;
+}
+
 function dataCurta(iso: string): string {
 	const [, m, d] = iso.split("-");
 	return `${d}/${m}`;
@@ -128,6 +139,7 @@ export function FechamentoFolha({ fechamento, mesAtual, hoje }: Props) {
 
 	const [edicoes, setEdicoes] = useState<Record<string, string>>({});
 	// Comprovantes escolhidos para quem ainda não foi salvo; vão junto com o pagamento.
+	const [vales, setVales] = useState<Record<string, string>>({});
 	const [arquivos, setArquivos] = useState<Record<string, File>>({});
 	const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
 	const [filtro, setFiltro] = useState<Filtro>("todos");
@@ -148,6 +160,11 @@ export function FechamentoFolha({ fechamento, mesAtual, hoje }: Props) {
 			for (const id of salvos) delete proximo[id];
 			return proximo;
 		});
+		setVales((atual) => {
+			const proximo = { ...atual };
+			for (const id of salvos) delete proximo[id];
+			return proximo;
+		});
 		setArquivos((atual) => {
 			const proximo = { ...atual };
 			for (const id of salvos) delete proximo[id];
@@ -157,6 +174,12 @@ export function FechamentoFolha({ fechamento, mesAtual, hoje }: Props) {
 
 	const textoValor = (linha: LinhaFechamento) =>
 		edicoes[linha.folhaId] ?? valorParaInput(linha.sugestao);
+
+	const textoVale = (linha: LinhaFechamento) =>
+		vales[linha.folhaId] ??
+		(linha.lancamento?.adiantamento
+			? valorParaInput(linha.lancamento.adiantamento)
+			: "");
 
 	const visiveis = useMemo(() => {
 		const termo = busca.trim().toLowerCase();
@@ -179,10 +202,17 @@ export function FechamentoFolha({ fechamento, mesAtual, hoje }: Props) {
 		folhaId: l.folhaId,
 		nome: l.nome,
 		valor: parseValor(textoValor(l)),
+		adiantamento: parseVale(textoVale(l)),
 	}));
-	const invalidos = itensSelecionados.filter((i) => i.valor == null);
+	const invalidos = itensSelecionados.filter(
+		(i) =>
+			i.valor == null ||
+			i.adiantamento == null ||
+			i.adiantamento > i.valor,
+	);
+	// O que vai ser transferido: valor menos o vale.
 	const totalSelecionado = itensSelecionados.reduce(
-		(acc, i) => acc + (i.valor ?? 0),
+		(acc, i) => acc + (i.valor ?? 0) - (i.adiantamento ?? 0),
 		0,
 	);
 	const ocupado = fetcher.state !== "idle";
@@ -219,7 +249,11 @@ export function FechamentoFolha({ fechamento, mesAtual, hoje }: Props) {
 		form.set(
 			"itens",
 			JSON.stringify(
-				itensSelecionados.map(({ folhaId, valor }) => ({ folhaId, valor })),
+				itensSelecionados.map(({ folhaId, valor, adiantamento }) => ({
+					folhaId,
+					valor,
+					adiantamento,
+				})),
 			),
 		);
 		for (const { folhaId } of itensSelecionados) {
@@ -388,6 +422,8 @@ export function FechamentoFolha({ fechamento, mesAtual, hoje }: Props) {
 								{decimo ? "Salário base" : "Mês passado"}
 							</TableHead>
 							<TableHead className='w-40'>Valor</TableHead>
+							<TableHead className='w-32'>Adiantamento</TableHead>
+							<TableHead className='text-right'>A pagar</TableHead>
 							<TableHead>Situação</TableHead>
 							<TableHead>Comprovante</TableHead>
 							<TableHead className='w-8' />
@@ -402,6 +438,10 @@ export function FechamentoFolha({ fechamento, mesAtual, hoje }: Props) {
 									? ((valor - linha.referencia) / linha.referencia) * 100
 									: null;
 							const marcado = selecionados.has(linha.folhaId);
+							const textoV = textoVale(linha);
+							const vale = parseVale(textoV);
+							const valeInvalido =
+								vale == null || (valor != null && vale > valor);
 							return (
 								<TableRow
 									key={linha.folhaId}
@@ -467,6 +507,29 @@ export function FechamentoFolha({ fechamento, mesAtual, hoje }: Props) {
 										</div>
 									</TableCell>
 									<TableCell>
+										<Input
+											aria-label={`Adiantamento de ${linha.nome}`}
+											inputMode='decimal'
+											placeholder='0,00'
+											value={textoV}
+											aria-invalid={valeInvalido}
+											onChange={(e) => {
+												const novo = e.target.value;
+												setVales((atual) => ({
+													...atual,
+													[linha.folhaId]: novo,
+												}));
+												if (!marcado) alternar(linha.folhaId, true);
+											}}
+											className='h-8 w-24 text-right'
+										/>
+									</TableCell>
+									<TableCell className='text-right font-medium'>
+										{valor != null && vale != null && !valeInvalido
+											? moeda(valor - vale)
+											: "-"}
+									</TableCell>
+									<TableCell>
 										<Situacao linha={linha} />
 									</TableCell>
 									<TableCell>
@@ -508,7 +571,7 @@ export function FechamentoFolha({ fechamento, mesAtual, hoje }: Props) {
 						{visiveis.length === 0 && (
 							<TableRow>
 								<TableCell
-									colSpan={8}
+									colSpan={10}
 									className='py-8 text-center text-muted-foreground'>
 									Ninguém nesta lista.
 								</TableCell>
