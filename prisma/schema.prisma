@@ -34,8 +34,9 @@ model despesas {
     tipo        String?
     boleto_path String?
     recibo_path String?
-    /// Mês da folha ("YYYY-MM") que originou esta despesa. Marca o lançamento de
-    /// salários mantido em sincronia com o total pago na folha do mês — ver
+    /// Mês da folha que originou esta despesa: "YYYY-MM" para salários e
+    /// "13-YYYY-MM" para o 13º. Marca o lançamento mantido em sincronia com o
+    /// total pago na folha do mês — ver
     /// `app/models/folha-despesas.server.ts`. Ausente em despesas manuais.
     origem_folha_mes String?
 
@@ -49,6 +50,9 @@ type FolhaSalarios {
     fgts   Float?
     pago   Boolean?
     sal_id String?
+    /// "salario" (ou ausente, nos lançamentos antigos), "decimo_1" ou
+    /// "decimo_2" — ver `app/lib/folha-tipos.ts`.
+    tipo   String?
     valor  Float?
 }
 

@@ -1,49 +1,25 @@
-import {
-	BarChart3,
-	ChevronDown,
-	PieChart as PieChartIcon,
-	Wallet,
-} from "lucide-react";
-import { useMemo, useState } from "react";
+import { BarChart3, PieChart as PieChartIcon } from "lucide-react";
+import { useMemo } from "react";
 import type { Route } from "./+types/folha";
 import { useLoaderData } from "react-router";
-import {
-	Card,
-	CardAction,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "~/components/ui/card";
-import {
-	Collapsible,
-	CollapsibleContent,
-	CollapsibleTrigger,
-} from "~/components/ui/collapsible";
-import { Toggle } from "~/components/ui/toggle";
-import {
-	Combobox,
-	ComboboxContent,
-	ComboboxEmpty,
-	ComboboxInput,
-	ComboboxItem,
-	ComboboxList,
-	useComboboxAnchor,
-} from "~/components/ui/combobox";
+import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { CardDiferencasSalarios } from "~/components/folha/card-diferencas-salarios";
-import { DialogEditarFuncionario } from "~/components/folha/dialog-editar-funcionario";
-import { DialogEditarSalario } from "~/components/folha/dialog-editar-salario";
-import { DialogNovoFuncionario } from "~/components/folha/dialog-novo-funcionario";
-import { DialogNovoSalario } from "~/components/folha/dialog-novo-salario";
+import { FechamentoFolha } from "~/components/folha/fechamento-folha";
+import {
+	hojeFechamento,
+	limitesDoPeriodo,
+	mesAtualFechamento,
+	montarFechamento,
+	parseMesFechamento,
+} from "~/lib/folha-fechamento";
+import { parseTipoLancamento } from "~/lib/folha-tipos";
 import {
 	atualizarFuncionario,
-	atualizarSalarioAPagar,
-	atualizarSalarioPorMesAno,
 	criarFuncionario,
-	criarSalarioAPagar,
 	excluirFuncionario,
-	getFolhasComSalariosUltimos3Meses,
-	getMesAtual,
+	getFolhasComSalarios,
+	removerLancamento,
+	salvarLancamentos,
 } from "~/models/folha.server";
 import { sincronizarDespesasSalarios } from "~/models/folha-despesas.server";
 import {
@@ -64,9 +40,6 @@ import {
 	ChartTooltip,
 	ChartTooltipContent,
 } from "~/components/ui/chart";
-import { cn } from "~/lib/utils";
-
-const TODOS = "Todos";
 
 const MESES_NOME = [
 	"Jan",
@@ -90,28 +63,23 @@ const chartConfigSalarios: ChartConfig = {
 	},
 } as const;
 
-function formatarData(date: Date | null | undefined): string {
-	if (!date) return "-";
-	return new Date(date).toLocaleDateString("pt-BR", {
-		month: "2-digit",
-		year: "numeric",
-	});
-}
-
-function formatarMoeda(valor: number | null | undefined): string {
-	if (valor == null) return "-";
-	return new Intl.NumberFormat("pt-BR", {
-		style: "currency",
-		currency: "BRL",
-	}).format(valor);
-}
-
 export async function loader({ request }: Route.LoaderArgs) {
-	// Lança/atualiza em despesas o total de salários pagos de cada mês recente.
+	// Lança/atualiza em despesas o total de salários e de 13º pagos nos meses recentes.
 	await sincronizarDespesasSalarios();
-	const { folhas, totalSalariosPagosMesAtual } =
-		await getFolhasComSalariosUltimos3Meses();
-	return { folhas, totalSalariosPagosMesAtual };
+	const url = new URL(request.url);
+	const mesAtual = mesAtualFechamento();
+	const periodo = parseMesFechamento(url.searchParams.get("mes")) ?? mesAtual;
+	const tipo = parseTipoLancamento(url.searchParams.get("tipo")) ?? "salario";
+
+	const folhas = await getFolhasComSalarios();
+	const fechamento = montarFechamento(folhas, tipo, periodo);
+	return { folhas, fechamento, mesAtual, hoje: hojeFechamento() };
+}
+
+function lerPeriodoETipo(formData: FormData) {
+	const periodo = parseMesFechamento(String(formData.get("mes") ?? ""));
+	const tipo = parseTipoLancamento(formData.get("tipo"));
+	return periodo && tipo ? { periodo, tipo } : null;
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -203,179 +171,72 @@ export async function action({ request }: Route.ActionArgs) {
 		}
 	}
 
-	if (intent === "editar") {
-		const folhaId = formData.get("folhaId");
-		const valorStr = formData.get("valor");
+	if (intent === "salvarLancamentos") {
+		const alvo = lerPeriodoETipo(formData);
+		if (!alvo) return { error: "Mês ou tipo de lançamento inválido" };
+
 		const dataStr = formData.get("data");
-		const marcarComoPago = formData.get("marcarComoPago") === "1";
-
+		const { dataMin, dataMax } = limitesDoPeriodo(alvo.tipo, alvo.periodo);
 		if (
-			typeof folhaId !== "string" ||
-			!folhaId ||
-			typeof valorStr !== "string" ||
-			!valorStr ||
 			typeof dataStr !== "string" ||
-			!dataStr
+			!/^\d{4}-\d{2}-\d{2}$/.test(dataStr) ||
+			dataStr < dataMin ||
+			dataStr > dataMax
 		) {
-			return { error: "Preencha todos os campos" };
+			return {
+				error: `A data precisa estar entre ${dataMin.split("-").reverse().join("/")} e ${dataMax.split("-").reverse().join("/")}.`,
+			};
 		}
 
-		const valor = parseFloat(valorStr.replace(",", "."));
-		if (isNaN(valor) || valor <= 0) {
-			return { error: "Valor inválido" };
-		}
-
-		const data = new Date(dataStr);
-		if (isNaN(data.getTime())) {
-			return { error: "Data inválida" };
-		}
-
+		let itens: { folhaId: string; valor: number }[];
 		try {
-			await atualizarSalarioAPagar(folhaId, valor, data, marcarComoPago);
-			return { success: true };
+			const bruto: unknown = JSON.parse(String(formData.get("itens") ?? "[]"));
+			if (!Array.isArray(bruto)) throw new Error();
+			itens = bruto.map((i) => {
+				const valor = Number(i?.valor);
+				if (typeof i?.folhaId !== "string" || !(valor > 0)) throw new Error();
+				return { folhaId: i.folhaId, valor: Math.round(valor * 100) / 100 };
+			});
 		} catch {
-			return { error: "Erro ao atualizar salário" };
+			return { error: "Valores inválidos" };
 		}
-	}
-
-	if (intent === "editarSalarioMesAtual") {
-		const folhaId = formData.get("folhaId");
-		const valorStr = formData.get("valor");
-		const dataStr = formData.get("data");
-		const marcarComoPago = formData.get("marcarComoPago") === "1";
-
-		if (
-			typeof folhaId !== "string" ||
-			!folhaId ||
-			typeof valorStr !== "string" ||
-			!valorStr ||
-			typeof dataStr !== "string" ||
-			!dataStr
-		) {
-			return { error: "Preencha todos os campos" };
-		}
-
-		const valor = parseFloat(valorStr.replace(",", "."));
-		if (isNaN(valor) || valor <= 0) {
-			return { error: "Valor inválido" };
-		}
-
-		const data = new Date(dataStr);
-		if (isNaN(data.getTime())) {
-			return { error: "Data inválida" };
-		}
-
-		const { mes, ano } = getMesAtual();
+		if (itens.length === 0) return { error: "Selecione ao menos uma pessoa" };
 
 		try {
-			await atualizarSalarioPorMesAno(
-				folhaId,
-				mes,
-				ano,
-				valor,
-				data,
-				marcarComoPago,
+			await salvarLancamentos(
+				alvo.tipo,
+				alvo.periodo,
+				new Date(dataStr),
+				formData.get("pago") === "1",
+				itens,
 			);
 			return { success: true };
 		} catch {
-			return { error: "Erro ao atualizar salário do mês" };
+			return { error: "Erro ao salvar os lançamentos" };
 		}
 	}
 
-	const folhaId = formData.get("folhaId");
-	const valorStr = formData.get("valor");
-	const dataStr = formData.get("data");
-
-	if (
-		typeof folhaId !== "string" ||
-		!folhaId ||
-		typeof valorStr !== "string" ||
-		!valorStr ||
-		typeof dataStr !== "string" ||
-		!dataStr
-	) {
-		return { error: "Preencha todos os campos" };
+	if (intent === "removerLancamento") {
+		const alvo = lerPeriodoETipo(formData);
+		const folhaId = formData.get("folhaId");
+		if (!alvo || typeof folhaId !== "string" || !folhaId) {
+			return { error: "Lançamento inválido" };
+		}
+		try {
+			await removerLancamento(folhaId, alvo.tipo, alvo.periodo);
+			return { success: true };
+		} catch (err) {
+			return {
+				error: err instanceof Error ? err.message : "Erro ao remover lançamento",
+			};
+		}
 	}
 
-	const valor = parseFloat(valorStr.replace(",", "."));
-	if (isNaN(valor) || valor <= 0) {
-		return { error: "Valor inválido" };
-	}
-
-	const data = new Date(dataStr);
-	if (isNaN(data.getTime())) {
-		return { error: "Data inválida" };
-	}
-
-	try {
-		await criarSalarioAPagar(folhaId, valor, data);
-		return { success: true };
-	} catch {
-		return { error: "Erro ao cadastrar salário" };
-	}
-}
-
-function isSalarioPagarNoMesAtual(
-	detalhes: { data: Date } | null | undefined,
-): boolean {
-	if (!detalhes?.data) return false;
-	const data = new Date(detalhes.data);
-	const hoje = new Date();
-	return (
-		data.getMonth() === hoje.getMonth() &&
-		data.getFullYear() === hoje.getFullYear()
-	);
-}
-
-function classeFundoCardFolha(folha: {
-	salarioMesAtualDetalhes: { pago: boolean } | null | undefined;
-	salarioAPagarDetalhes: { data: Date } | null | undefined;
-}): string {
-	if (folha.salarioMesAtualDetalhes?.pago) return "bg-olive-300";
-	const temSalarioNoMesAtual =
-		folha.salarioMesAtualDetalhes != null ||
-		isSalarioPagarNoMesAtual(folha.salarioAPagarDetalhes);
-	if (temSalarioNoMesAtual) return "bg-white";
-	return "bg-orange-100";
+	return { error: "Ação desconhecida" };
 }
 
 export default function Folha() {
-	const { folhas, totalSalariosPagosMesAtual } = useLoaderData<typeof loader>();
-	const [filtroNome, setFiltroNome] = useState<string | null>();
-	const [mostrarSemSalarioPagar, setMostrarSemSalarioPagar] = useState(false);
-	const anchorRef = useComboboxAnchor();
-
-	const nomes = useMemo(
-		() => [TODOS, ...[...new Set(folhas.map((f) => f.nome))].sort()],
-		[folhas],
-	);
-
-	const folhasFiltradas = useMemo(() => {
-		let resultado = folhas;
-		if (filtroNome && filtroNome !== TODOS) {
-			resultado = resultado.filter((f) => f.nome === filtroNome);
-		}
-		if (mostrarSemSalarioPagar) {
-			resultado = resultado.filter((f) => {
-				if (f.salarioAPagar == null) return true;
-				return !isSalarioPagarNoMesAtual(f.salarioAPagarDetalhes);
-			});
-		}
-		return resultado;
-	}, [folhas, filtroNome, mostrarSemSalarioPagar]);
-
-	const totalSalariosAPagarMesAtual = useMemo(() => {
-		return folhas.reduce((acc, f) => {
-			if (
-				f.salarioAPagar != null &&
-				f.salarioAPagarDetalhes &&
-				isSalarioPagarNoMesAtual(f.salarioAPagarDetalhes)
-			) {
-				return acc + f.salarioAPagar;
-			}
-			return acc;
-		}, 0);
-	}, [folhas]);
+	const { folhas, fechamento, mesAtual, hoje } = useLoaderData<typeof loader>();
 
 	const graficoSalariosUltimos3Meses = useMemo(() => {
 		const porMes = new Map<
@@ -498,169 +359,16 @@ export default function Folha() {
 
 	return (
 		<div className='space-y-6'>
-			<div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
-				<h1 className='text-xl font-medium tracking-tight text-orange-500'>
-					Folha de Pagamento
-				</h1>
-				<div className='flex flex-wrap gap-4'>
-					<div className='rounded-lg border bg-stone-50 px-4 py-2'>
-						<p className='text-xs font-medium text-stone-500'>
-							Total a pagar no mês
-						</p>
-						<p className='text-lg font-semibold text-orange-600'>
-							{formatarMoeda(totalSalariosAPagarMesAtual)}
-						</p>
-					</div>
-					<div className='rounded-lg border bg-stone-50 px-4 py-2'>
-						<p className='text-xs font-medium text-stone-500'>
-							Salários pagos no mês
-						</p>
-						<p className='text-lg font-semibold text-green-600'>
-							{formatarMoeda(totalSalariosPagosMesAtual)}
-						</p>
-						<p className='text-[10px] text-stone-400'>
-							lançado automaticamente em Despesas
-						</p>
-					</div>
-				</div>
-			</div>
-			<div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
-				<div className='flex flex-wrap items-center gap-3'>
-					<DialogNovoFuncionario />
-					<DialogNovoSalario
-						folhas={folhas.map((f) => ({ id: f.id, nome: f.nome }))}
-					/>
-				</div>
-				<div className='flex flex-wrap items-center gap-4'>
-					<Toggle
-						aria-label='Mostrar apenas quem não tem salário a pagar no mês'
-						size='sm'
-						variant='outline'
-						pressed={mostrarSemSalarioPagar}
-						onPressedChange={setMostrarSemSalarioPagar}
-						className='group/toggle'>
-						<Wallet className='group-data-[state=on]/toggle:fill-foreground' />
-						Sem salário no mês
-					</Toggle>
-					<div ref={anchorRef} className='w-full sm:w-64'>
-						<Combobox
-							value={filtroNome}
-							onValueChange={(v) => setFiltroNome(v)}
-							items={nomes}>
-							<ComboboxInput placeholder='Filtrar por funcionário' showClear />
-							<ComboboxContent anchor={anchorRef}>
-								<ComboboxList>
-									{(nome) => (
-										<ComboboxItem key={nome} value={nome}>
-											{nome}
-										</ComboboxItem>
-									)}
-								</ComboboxList>
-								<ComboboxEmpty>Nenhum funcionário encontrado</ComboboxEmpty>
-							</ComboboxContent>
-						</Combobox>
-					</div>
-				</div>
-			</div>
+			<h1 className='text-xl font-medium tracking-tight text-orange-500'>
+				Folha de Pagamento
+			</h1>
 
-			<div className='grid gap-4 md:grid-cols-3 lg:grid-cols-3'>
-				{folhasFiltradas.map((folha) => (
-					<Card
-						key={folha.id}
-						className={cn("overflow-hidden", classeFundoCardFolha(folha))}>
-						<CardHeader className='pb-2'>
-							<CardTitle className='text-base'>{folha.nome}</CardTitle>
-							<CardAction>
-								<DialogEditarFuncionario
-									folhaId={folha.id}
-									nome={folha.nome}
-									conta={folha.conta}
-									funcao={folha.funcao}
-									modalidade={folha.modalidade}
-								/>
-							</CardAction>
-							<CardDescription className='text-xs font-extralight text-muted-foreground'>
-								{folha.funcao} • {folha.modalidade}
-							</CardDescription>
-							{folha.salarioMesAtualDetalhes && (
-								<div className='flex items-center gap-2'>
-									<p className='text-sm font-medium text-amber-600'>
-										{formatarMoeda(folha.salarioMesAtualDetalhes.valor)}
-										{folha.salarioMesAtualDetalhes.pago && (
-											<span className='ml-1 text-xs font-normal text-green-600'>
-												(pago)
-											</span>
-										)}
-									</p>
-									<DialogEditarSalario
-										folhaId={folha.id}
-										nome={folha.nome}
-										conta={folha.conta}
-										valor={folha.salarioMesAtualDetalhes.valor}
-										data={folha.salarioMesAtualDetalhes.data}
-										porMesAtual
-										jaPago={folha.salarioMesAtualDetalhes.pago}
-									/>
-								</div>
-							)}
-							{folha.salarioAPagar != null &&
-								folha.salarioAPagarDetalhes &&
-								!isSalarioPagarNoMesAtual(folha.salarioAPagarDetalhes) && (
-									<div className='flex items-center gap-2'>
-										<p className='text-sm font-medium text-amber-600'>
-											A pagar: {formatarMoeda(folha.salarioAPagar)}
-										</p>
-										<DialogEditarSalario
-											folhaId={folha.id}
-											nome={folha.nome}
-											conta={folha.conta}
-											valor={folha.salarioAPagarDetalhes.valor}
-											data={folha.salarioAPagarDetalhes.data}
-										/>
-									</div>
-								)}
-						</CardHeader>
-						<CardContent className='space-y-3'>
-							{folha.salariosUltimos3Meses.length > 0 ? (
-								<Collapsible>
-									<CollapsibleTrigger className='flex w-full items-center justify-between rounded-md border-b px-2 py-1 text-sm hover:bg-muted/50 [&[data-state=open]>svg]:rotate-180'>
-										<span>Salários</span>
-										<ChevronDown className='h-4 w-4 shrink-0 transition-transform' />
-									</CollapsibleTrigger>
-									<CollapsibleContent>
-										<ul className='mt-2 space-y-2'>
-											{folha.salariosUltimos3Meses.map((sal, idx) => (
-												<li
-													key={sal.sal_id ?? idx}
-													className='flex items-center justify-between text-sm'>
-													<span className='text-muted-foreground'>
-														{formatarData(sal.data)}
-													</span>
-													<span className='font-medium'>
-														{formatarMoeda(sal.valor)}
-													</span>
-												</li>
-											))}
-										</ul>
-									</CollapsibleContent>
-								</Collapsible>
-							) : (
-								<p className='text-sm text-muted-foreground'>
-									Sem registros nos últimos 3 meses
-								</p>
-							)}
-						</CardContent>
-					</Card>
-				))}
-			</div>
-
-			{folhasFiltradas.length === 0 && (
-				<Card>
-					<CardContent className='py-12 text-center text-muted-foreground'>
-						Nenhum funcionário encontrado na folha.
-					</CardContent>
-				</Card>
-			)}
+			<FechamentoFolha
+				key={`${fechamento.periodo.ano}-${fechamento.periodo.mes}-${fechamento.tipo}`}
+				fechamento={fechamento}
+				mesAtual={mesAtual}
+				hoje={hoje}
+			/>
 
 			<div className='mt-8 space-y-8'>
 				<div className='grid gap-8 lg:grid-cols-2'>

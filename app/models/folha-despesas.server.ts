@@ -1,26 +1,45 @@
 import { db } from "~/db.server";
 import { limitesMesCivilUTC } from "~/lib/despesas-calendar";
+import { ehSalario } from "~/lib/folha-tipos";
 
 /**
- * Mantém em despesas um lançamento por mês com o total de salários **pagos** na
- * folha daquele mês. O vínculo é o campo `despesas.origem_folha_mes` ("YYYY-MM"):
- * enquanto o valor da folha muda (novo salário marcado como pago, valor editado),
- * a despesa correspondente é atualizada em vez de duplicada.
+ * Mantém em despesas um lançamento por mês com o total **pago** na folha
+ * daquele mês, separado em dois: salários e 13º. O vínculo é o campo
+ * `despesas.origem_folha_mes`: "YYYY-MM" para salários e "13-YYYY-MM" para o
+ * 13º. Enquanto o valor da folha muda (novo pagamento, valor editado), a
+ * despesa correspondente é atualizada em vez de duplicada.
  */
 
 const CONTA = "Pessoal";
 const TIPO = "fixa";
-const DESCRICAO = "Salários (folha)";
+
+type Categoria = {
+	descricao: string;
+	prefixoChave: string;
+	/**
+	 * Só os salários adotam despesas lançadas à mão antes desta automação: ao
+	 * sincronizar um mês pela primeira vez, uma delas ganha `origem_folha_mes`
+	 * em vez de criarmos uma segunda — senão o mês contaria a folha duas vezes.
+	 */
+	adotaManual: boolean;
+};
+
+const SALARIOS: Categoria = {
+	descricao: "Salários (folha)",
+	prefixoChave: "",
+	adotaManual: true,
+};
+
+const DECIMO_TERCEIRO: Categoria = {
+	descricao: "13º salário (folha)",
+	prefixoChave: "13-",
+	adotaManual: false,
+};
+
+const DESCRICAO_MANUAL = /sal[aá]rios?|folha/i;
 
 /** Quantos meses civis para trás são sincronizados (inclui o mês atual). */
 const MESES_SINCRONIZADOS = 3;
-
-/**
- * Despesas de salário lançadas à mão antes desta automação. Ao sincronizar um
- * mês pela primeira vez, uma delas é adotada (ganha `origem_folha_mes`) em vez
- * de criarmos uma segunda — senão o mês contaria a folha duas vezes.
- */
-const DESCRICAO_MANUAL = /sal[aá]rios?|folha/i;
 
 /** Diferenças abaixo de meio centavo são ruído de ponto flutuante. */
 const TOLERANCIA = 0.005;
@@ -52,14 +71,19 @@ function mesesDaJanela(hoje = new Date()): { ano: number; mes: number }[] {
 
 type TotalMes = { total: number; ultimoPagamento: Date | null };
 
-/** Soma dos salários pagos por mês civil (UTC), a partir de toda a folha. */
-async function totaisPagosPorMes(): Promise<Map<string, TotalMes>> {
+/** Soma do que foi pago por mês civil (UTC), separada em salários e 13º. */
+async function totaisPagosPorMes(): Promise<{
+	salarios: Map<string, TotalMes>;
+	decimo: Map<string, TotalMes>;
+}> {
 	const folhas = await db.folha.findMany({ select: { salarios: true } });
 
-	const porMes = new Map<string, TotalMes>();
+	const salarios = new Map<string, TotalMes>();
+	const decimo = new Map<string, TotalMes>();
 	for (const folha of folhas) {
 		for (const sal of folha.salarios ?? []) {
 			if (sal.pago !== true || sal.valor == null || !sal.data) continue;
+			const porMes = ehSalario(sal) ? salarios : decimo;
 			const d = new Date(sal.data);
 			const chave = chaveMes(d.getUTCFullYear(), d.getUTCMonth() + 1);
 			const atual = porMes.get(chave) ?? { total: 0, ultimoPagamento: null };
@@ -70,15 +94,16 @@ async function totaisPagosPorMes(): Promise<Map<string, TotalMes>> {
 			porMes.set(chave, atual);
 		}
 	}
-	return porMes;
+	return { salarios, decimo };
 }
 
 async function sincronizarMes(
+	categoria: Categoria,
 	ano: number,
 	mes: number,
 	totalMes: TotalMes | undefined,
 ): Promise<SincronizacaoSalarios> {
-	const chave = chaveMes(ano, mes);
+	const chave = `${categoria.prefixoChave}${chaveMes(ano, mes)}`;
 	const total = Math.round((totalMes?.total ?? 0) * 100) / 100;
 	const { inicio, fim } = limitesMesCivilUTC(ano, mes);
 
@@ -105,33 +130,35 @@ async function sincronizarMes(
 		return { mes: chave, total, acao: "atualizada" };
 	}
 
-	// Primeira sincronização do mês: adota um lançamento manual, se houver.
-	const candidatos = await db.despesas.findMany({
-		where: { conta: CONTA, data: { gte: inicio, lte: fim } },
-	});
-	const manual = candidatos.find(
-		(d) => !d.origem_folha_mes && DESCRICAO_MANUAL.test(d.descricao ?? ""),
-	);
-
-	if (manual) {
-		await db.despesas.update({
-			where: { id: manual.id },
-			data: { origem_folha_mes: chave, valor: total },
+	if (categoria.adotaManual) {
+		// Primeira sincronização do mês: adota um lançamento manual, se houver.
+		const candidatos = await db.despesas.findMany({
+			where: { conta: CONTA, data: { gte: inicio, lte: fim } },
 		});
-		return {
-			mes: chave,
-			total,
-			acao:
-				Math.abs((manual.valor ?? 0) - total) < TOLERANCIA
-					? "adotada"
-					: "atualizada",
-		};
+		const manual = candidatos.find(
+			(d) => !d.origem_folha_mes && DESCRICAO_MANUAL.test(d.descricao ?? ""),
+		);
+
+		if (manual) {
+			await db.despesas.update({
+				where: { id: manual.id },
+				data: { origem_folha_mes: chave, valor: total },
+			});
+			return {
+				mes: chave,
+				total,
+				acao:
+					Math.abs((manual.valor ?? 0) - total) < TOLERANCIA
+						? "adotada"
+						: "atualizada",
+			};
+		}
 	}
 
 	await db.despesas.create({
 		data: {
 			conta: CONTA,
-			descricao: DESCRICAO,
+			descricao: categoria.descricao,
 			valor: total,
 			data: totalMes?.ultimoPagamento ?? fim,
 			tipo: TIPO,
@@ -158,11 +185,13 @@ export async function sincronizarDespesasSalarios(): Promise<
 	if (emAndamento) return emAndamento;
 
 	emAndamento = (async () => {
-		const porMes = await totaisPagosPorMes();
+		const { salarios, decimo } = await totaisPagosPorMes();
 		const resultado: SincronizacaoSalarios[] = [];
 		for (const { ano, mes } of mesesDaJanela()) {
+			const chave = chaveMes(ano, mes);
 			resultado.push(
-				await sincronizarMes(ano, mes, porMes.get(chaveMes(ano, mes))),
+				await sincronizarMes(SALARIOS, ano, mes, salarios.get(chave)),
+				await sincronizarMes(DECIMO_TERCEIRO, ano, mes, decimo.get(chave)),
 			);
 		}
 		return resultado;

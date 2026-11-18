@@ -1,7 +1,9 @@
 /**
  * Compara os salários pagos de cada funcionário entre dois meses civis.
  * Usa UTC porque as datas de salário são gravadas como meia-noite UTC.
+ * O 13º fica de fora: ele não é variação de salário.
  */
+import { ehSalario } from "~/lib/folha-tipos";
 
 /** Diferenças abaixo de meio centavo são ruído de ponto flutuante. */
 const TOLERANCIA = 0.005;
@@ -17,6 +19,7 @@ type FolhaComSalarios = {
 				data?: Date | string | null;
 				valor?: number | null;
 				pago?: boolean | null;
+				tipo?: string | null;
 		  }[]
 		| null;
 };
@@ -52,7 +55,8 @@ function somaPagaNoMes(
 	{ ano, mes }: MesCivil,
 ): number {
 	return (salarios ?? []).reduce((total, sal) => {
-		if (sal.pago !== true || sal.valor == null || !sal.data) return total;
+		if (sal.pago !== true || sal.valor == null || !sal.data || !ehSalario(sal))
+			return total;
 		const d = new Date(sal.data);
 		return d.getUTCFullYear() === ano && d.getUTCMonth() === mes
 			? total + sal.valor
