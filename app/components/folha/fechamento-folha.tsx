@@ -1,5 +1,7 @@
 import {
+	Check,
 	ChevronLeft,
+	Copy,
 	ChevronRight,
 	ClipboardCheck,
 	Search,
@@ -96,6 +98,12 @@ function parseValor(texto: string): number | null {
 function dataCurta(iso: string): string {
 	const [, m, d] = iso.split("-");
 	return `${d}/${m}`;
+}
+
+/** "pix: 123..." -> "123...": copia só a chave; dados bancários vão inteiros. */
+function textoParaCopiar(conta: string): string {
+	const semPrefixo = conta.replace(/^\s*pix\s*[:▸-]?\s*/i, "").trim();
+	return semPrefixo || conta.trim();
 }
 
 function href(periodo: MesFechamento, tipo: TipoLancamento): string {
@@ -351,6 +359,7 @@ export function FechamentoFolha({ fechamento, mesAtual, hoje }: Props) {
 								/>
 							</TableHead>
 							<TableHead>Funcionário</TableHead>
+							<TableHead>Conta / PIX</TableHead>
 							<TableHead className='text-right'>
 								{decimo ? "Salário base" : "Mês passado"}
 							</TableHead>
@@ -395,6 +404,9 @@ export function FechamentoFolha({ fechamento, mesAtual, hoje }: Props) {
 										<div className='text-xs text-muted-foreground'>
 											{linha.funcao} • {linha.modalidade}
 										</div>
+									</TableCell>
+									<TableCell>
+										<ContaPix conta={linha.conta} />
 									</TableCell>
 									<TableCell className='text-right text-muted-foreground'>
 										{moeda(linha.referencia)}
@@ -452,7 +464,7 @@ export function FechamentoFolha({ fechamento, mesAtual, hoje }: Props) {
 						{visiveis.length === 0 && (
 							<TableRow>
 								<TableCell
-									colSpan={6}
+									colSpan={7}
 									className='py-8 text-center text-muted-foreground'>
 									Ninguém nesta lista.
 								</TableCell>
@@ -536,6 +548,41 @@ function Resumo({
 			<p className='text-xs font-medium text-stone-500'>{titulo}</p>
 			<p className={cn("text-lg font-semibold", cor)}>{valor}</p>
 			<p className='text-[11px] text-stone-400'>{detalhe}</p>
+		</div>
+	);
+}
+
+function ContaPix({ conta }: { conta: string }) {
+	const [copiado, setCopiado] = useState(false);
+	const texto = conta.trim();
+	if (!texto) {
+		return <span className='text-xs text-muted-foreground'>Sem conta</span>;
+	}
+
+	async function copiar() {
+		try {
+			await navigator.clipboard.writeText(textoParaCopiar(texto));
+			setCopiado(true);
+			setTimeout(() => setCopiado(false), 1500);
+		} catch {
+			// Sem permissão de área de transferência: o texto continua visível.
+		}
+	}
+
+	return (
+		<div className='flex max-w-56 items-center gap-1'>
+			<span className='truncate text-xs' title={texto}>
+				{texto}
+			</span>
+			<Button
+				type='button'
+				size='icon-xs'
+				variant='ghost'
+				aria-label='Copiar conta'
+				title={copiado ? "Copiado" : "Copiar"}
+				onClick={copiar}>
+				{copiado ? <Check className='text-green-600' /> : <Copy />}
+			</Button>
 		</div>
 	);
 }
