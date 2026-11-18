@@ -173,7 +173,9 @@ export function FechamentoFolha({ fechamento, mesAtual, hoje }: Props) {
 	}, [fetcher.state, fetcher.data]);
 
 	const textoValor = (linha: LinhaFechamento) =>
-		edicoes[linha.folhaId] ?? valorParaInput(linha.sugestao);
+		edicoes[linha.folhaId] ??
+		// Só mostra o valor de quem já foi lançado; a sugestão não vem preenchida.
+		valorParaInput(linha.lancamento?.valor ?? null);
 
 	const textoVale = (linha: LinhaFechamento) =>
 		vales[linha.folhaId] ??
